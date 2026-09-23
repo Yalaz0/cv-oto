@@ -47,6 +47,30 @@ export function PaginatedCv({
       if (!original) return;
       const target = output.current;
       target.replaceChildren();
+      const fixedPages = Array.from(
+        source.current.querySelectorAll<HTMLElement>(".cv-fixed-page"),
+      );
+      if (fixedPages.length) {
+        for (const page of fixedPages) {
+          const clone = page.cloneNode(true) as HTMLElement;
+          clone.classList.add("cv-page");
+          target.append(clone);
+        }
+        const fixedOverflow = Array.from(
+          target.querySelectorAll<HTMLElement>(".cv-page"),
+        ).some(
+          (page) =>
+            page.scrollHeight > page.clientHeight + 1 ||
+            page.scrollWidth > page.clientWidth + 1,
+        );
+        setCount(fixedPages.length);
+        setOverflow(fixedOverflow);
+        onLayoutChange?.({ pages: fixedPages.length, overflow: fixedOverflow });
+        target.dataset.paginationReady = "true";
+        target.dataset.overflow = String(fixedOverflow);
+        target.dataset.pageCount = String(fixedPages.length);
+        return;
+      }
       const pages: HTMLElement[] = [];
       let oversized = false;
       const pageAt = (index: number) => {
