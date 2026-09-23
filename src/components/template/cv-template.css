@@ -1,0 +1,159 @@
+.cv-canvas {
+  background: #e8edf3;
+  min-height: 100vh;
+  padding: 32px;
+}
+.cv-document {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 10mm;
+  background: #fff;
+  color: #1d1d1d;
+  font-family: Arial, sans-serif;
+  font-size: 9.2pt;
+  line-height: 1.45;
+  box-shadow: 0 5px 20px #00366d20;
+}
+.cv-header {
+  display: grid;
+  grid-template-columns: 23mm minmax(0, 1fr) 52mm;
+  align-items: center;
+  gap: 5mm;
+  border-bottom: 0.8pt solid #00366d;
+  padding-bottom: 5mm;
+}
+.cv-photo {
+  width: 21mm;
+  height: 21mm;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.cv-identity h1 {
+  color: #00366d;
+  font-size: 23pt;
+  line-height: 1;
+  letter-spacing: -0.4pt;
+  margin: 0;
+}
+.cv-identity p {
+  margin: 2mm 0 0;
+  font-size: 10pt;
+  font-weight: 700;
+}
+.cv-contact {
+  display: grid;
+  gap: 0.7mm;
+  color: #343434;
+  font-size: 8pt;
+  font-style: normal;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.cv-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52mm;
+  gap: 8mm;
+  padding-top: 5mm;
+}
+.cv-section {
+  break-inside: avoid;
+  margin: 0 0 5mm;
+}
+.cv-section h2 {
+  border-bottom: 0.6pt solid #00366d;
+  color: #00366d;
+  font-size: 10pt;
+  letter-spacing: 0.5pt;
+  margin: 0 0 2.5mm;
+  padding-bottom: 1mm;
+  text-transform: uppercase;
+}
+.cv-summary {
+  margin: 0;
+}
+.cv-entry {
+  break-inside: avoid;
+  margin: 0 0 3.2mm;
+}
+.cv-entry-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 4mm;
+}
+.cv-entry h3 {
+  font-size: 9.2pt;
+  line-height: 1.25;
+  margin: 0;
+}
+.cv-subtitle {
+  font-weight: 700;
+  margin: 0.5mm 0 0;
+}
+.cv-entry-meta {
+  color: #3e4b58;
+  font-size: 8pt;
+  min-width: 28mm;
+  text-align: right;
+}
+.cv-entry-meta p {
+  margin: 0;
+}
+.cv-entry ul {
+  margin: 1.2mm 0 0;
+  padding-left: 4mm;
+}
+.cv-entry li {
+  margin: 0.6mm 0;
+}
+.cv-sidebar .cv-entry-heading {
+  display: block;
+}
+.cv-sidebar .cv-entry-meta {
+  text-align: left;
+}
+.cv-tags,
+.cv-simple-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cv-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2mm;
+}
+.cv-tags li {
+  border: 0.5pt solid #b7c8d9;
+  border-radius: 2mm;
+  color: #00366d;
+  font-size: 8pt;
+  padding: 0.7mm 1.6mm;
+}
+.cv-simple-list li {
+  margin: 0 0 1.1mm;
+}
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  .cv-canvas {
+    background: #fff;
+    padding: 0;
+  }
+  .cv-document {
+    box-shadow: none;
+    margin: 0;
+    min-height: 0;
+    width: 210mm;
+  }
+}
+@media (max-width: 800px) {
+  .cv-canvas {
+    overflow-x: auto;
+    padding: 16px;
+  }
+}

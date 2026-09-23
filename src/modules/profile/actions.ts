@@ -1,0 +1,192 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { PDFParse } from "pdf-parse";
+import sharp from "sharp";
+import { z } from "zod";
+import { parsePublicEnv } from "@/lib/env";
+import { createClient } from "@/lib/supabase/server";
+import { createMasterDocument, exportJsonResume } from "./json-resume";
+import { masterResumeSchema, profileSaveSchema } from "./schema";
+
+export type ProfileActionState = {
+  error?: string;
+  version?: number;
+  id?: string;
+};
+
+async function requireSameOrigin() {
+  const origin = (await headers()).get("origin");
+  if (
+    origin !== new URL(parsePublicEnv(process.env).NEXT_PUBLIC_APP_URL).origin
+  )
+    throw new Error("INVALID_ORIGIN");
+}
+
+export async function saveProfile(input: unknown): Promise<ProfileActionState> {
+  await requireSameOrigin();
+  const parsed = profileSaveSchema.safeParse(input);
+  if (!parsed.success) return { error: "Profil bilgilerini kontrol edin." };
+  const client = await createClient();
+  const { data, error } = await client.rpc("save_master_resume", {
+    p_id: parsed.data.id,
+    p_expected_version: parsed.data.expectedVersion,
+    p_document: parsed.data.document,
+    p_change_source: parsed.data.changeSource,
+  });
+  if (error)
+    return {
+      error:
+        error.code === "PT409"
+          ? "Bu profil başka bir sekmede güncellendi. Sayfayı yenileyin."
+          : "Profil kaydedilemedi.",
+    };
+  const saved = data as { id: string; version: number };
+  revalidatePath("/profile");
+  return { id: saved.id, version: saved.version };
+}
+
+export async function restoreProfileVersion(input: {
+  id: string;
+  expectedVersion: number;
+  snapshotId: string;
+}): Promise<ProfileActionState> {
+  await requireSameOrigin();
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      expectedVersion: z.number().int().positive(),
+      snapshotId: z.string().uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { error: "Geri yüklenecek sürüm geçersiz." };
+  const client = await createClient();
+  const { data: snapshot, error: snapshotError } = await client
+    .from("master_resume_versions")
+    .select("document")
+    .eq("id", parsed.data.snapshotId)
+    .eq("master_resume_id", parsed.data.id)
+    .maybeSingle();
+  if (snapshotError || !snapshot) return { error: "Profil sürümü bulunamadı." };
+  return saveProfile({
+    id: parsed.data.id,
+    expectedVersion: parsed.data.expectedVersion,
+    document: snapshot.document,
+    changeSource: "manual",
+  });
+}
+
+export async function importJsonResume(
+  json: string,
+  locale: "tr-TR" | "en-US",
+): Promise<ProfileActionState & { document?: unknown }> {
+  await requireSameOrigin();
+  try {
+    const document = createMasterDocument(
+      JSON.parse(json),
+      locale,
+      "needs_review",
+    );
+    return { id: randomUUID(), version: 0, document };
+  } catch {
+    return { error: "JSON Resume belgesi geçerli değil." };
+  }
+}
+
+export async function importPdfResume(
+  formData: FormData,
+  locale: "tr-TR" | "en-US",
+) {
+  await requireSameOrigin();
+  const file = formData.get("resume");
+  if (
+    !(file instanceof File) ||
+    file.type !== "application/pdf" ||
+    file.size > 10 * 1024 * 1024
+  )
+    return { error: "En fazla 10 MB PDF seçin." };
+  let parser: PDFParse | undefined;
+  try {
+    parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) });
+    const { text } = await parser.getText();
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const email =
+      lines
+        .find((line) => /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/.test(line))
+        ?.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] ?? "";
+    const phone = lines.find((line) => /\+?\d[\d ()-]{7,}/.test(line)) ?? "";
+    const document = createMasterDocument(
+      {
+        basics: {
+          name: lines[0] ?? "",
+          email,
+          phone,
+          summary: lines.slice(1, 6).join(" "),
+        },
+        work: [],
+        education: [],
+        projects: [],
+        skills: [],
+        languages: [],
+        references: [],
+      },
+      locale,
+      "needs_review",
+    );
+    return { id: randomUUID(), version: 0, document };
+  } catch {
+    return {
+      error: "PDF metni okunamadı. Taranmış PDF için manuel giriş kullanın.",
+    };
+  } finally {
+    await parser?.destroy();
+  }
+}
+
+export async function getJsonResumeExport(document: unknown) {
+  await requireSameOrigin();
+  return exportJsonResume(masterResumeSchema.parse(document));
+}
+
+export async function uploadProfilePhoto(formData: FormData): Promise<{
+  error?: string;
+  imageUrl?: string;
+}> {
+  await requireSameOrigin();
+  const photo = formData.get("photo");
+  if (!(photo instanceof File)) return { error: "Bir fotoğraf seçin." };
+  if (!["image/jpeg", "image/png", "image/webp"].includes(photo.type))
+    return { error: "JPEG, PNG veya WebP formatında bir fotoğraf seçin." };
+  if (photo.size > 5 * 1024 * 1024)
+    return { error: "Fotoğraf en fazla 5 MB olabilir." };
+  try {
+    const output = await sharp(Buffer.from(await photo.arrayBuffer()), {
+      limitInputPixels: 25_000_000,
+    })
+      .rotate()
+      .resize(800, 800, { fit: "cover", withoutEnlargement: true })
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer();
+    const client = await createClient();
+    const {
+      data: { user },
+    } = await client.auth.getUser();
+    if (!user) return { error: "Oturumun süresi doldu." };
+    const { error } = await client.storage
+      .from("profile-photos")
+      .upload(`${user.id}/profile.jpg`, output, {
+        contentType: "image/jpeg",
+        upsert: true,
+        cacheControl: "private, max-age=3600",
+      });
+    if (error) return { error: "Fotoğraf kaydedilemedi." };
+    return { imageUrl: "/api/profile/photo" };
+  } catch {
+    return { error: "Fotoğraf dosyası işlenemedi." };
+  }
+}

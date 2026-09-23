@@ -1,0 +1,2 @@
+-- No private CV data or user identities are seeded into application environments.
+-- Test users are created by the isolated integration test harness.
