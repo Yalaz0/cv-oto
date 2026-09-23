@@ -76,7 +76,11 @@ export function createMasterDocument(
     ["languages", resume.languages],
     ["references", resume.references],
   ] as const)
-    for (const item of items) addClaim(section, visibleText(item));
+    for (const item of items) {
+      const itemId = typeof item.id === "string" ? item.id : randomUUID();
+      item.id = itemId;
+      addClaim(section, visibleText(item), itemId);
+    }
   return { schemaVersion: "1.0", locale, resume, registry, itemMetadata };
 }
 
@@ -107,4 +111,57 @@ export function exportJsonResume(document: MasterResumeDocument) {
   });
   if (!valid) throw new Error("INVALID_JSON_RESUME_EXPORT");
   return resume as JsonResumeDocument;
+}
+
+// Preserve exact source identities; edited text must be explicitly reviewed again.
+export function reconcileMasterDocument(
+  next: MasterResumeDocument,
+  previous: MasterResumeDocument,
+): MasterResumeDocument {
+  if (JSON.stringify(next.resume) === JSON.stringify(previous.resume))
+    return next;
+  const rebuilt = createMasterDocument(
+    next.resume,
+    next.locale,
+    "needs_review",
+  );
+  const oldClaims = Object.values(previous.registry);
+  const used = new Set<string>();
+  const registry: MasterResumeDocument["registry"] = {};
+  const itemMetadata: MasterResumeDocument["itemMetadata"] = {};
+  for (const claim of Object.values(rebuilt.registry)) {
+    const exact = oldClaims.find(
+      (entry) =>
+        !used.has(entry.id) &&
+        entry.section === claim.section &&
+        entry.text === claim.text,
+    );
+    const old =
+      exact ??
+      oldClaims.find(
+        (entry) =>
+          !used.has(entry.id) &&
+          entry.section === claim.section &&
+          (entry.itemId === claim.itemId ||
+            claim.section === "basics" ||
+            claim.section === "summary"),
+      );
+    const record = old
+      ? {
+          ...claim,
+          id: old.id,
+          itemId: old.itemId,
+          createdAt: old.createdAt,
+          status:
+            old.text === claim.text ? old.status : ("needs_review" as const),
+        }
+      : claim;
+    if (old) used.add(old.id);
+    registry[record.id] = record;
+    itemMetadata[record.itemId] = {
+      section: record.section,
+      status: record.status,
+    };
+  }
+  return { ...rebuilt, registry, itemMetadata };
 }

@@ -1,0 +1,30 @@
+import { expect, it } from "vitest";
+import { demoResume } from "@/modules/demo/fixtures";
+import { fromProfile } from "@/modules/template/from-profile";
+import { createMasterDocument, reconcileMasterDocument } from "./json-resume";
+
+it("keeps source IDs but requires re-review of edited facts", () => {
+  const original = createMasterDocument(demoResume, "tr-TR", "verified");
+  const edited = structuredClone(original);
+  edited.resume.work[0].position = "Director";
+  const next = reconcileMasterDocument(edited, original);
+  const originalWork = Object.values(original.registry).find(
+    (c) => c.section === "work",
+  );
+  if (!originalWork) throw new Error("Missing fixture");
+  expect(next.registry[originalWork.id].status).toBe("needs_review");
+  expect(next.registry[originalWork.id].itemId).toBe(originalWork.itemId);
+  const selected = Object.keys(next.registry);
+  expect(JSON.stringify(fromProfile(next, selected))).not.toContain("Director");
+  expect(JSON.stringify(original)).not.toContain("Director");
+});
+it("does not invent job requirements or include unselected sources", () => {
+  const profile = createMasterDocument(demoResume, "tr-TR", "verified");
+  const selected = Object.values(profile.registry)
+    .filter((c) => c.section === "basics")
+    .map((c) => c.id);
+  const result = fromProfile(profile, selected);
+  expect(result.basics.name).toBe("Deniz Örnek");
+  expect(result.work).toEqual([]);
+  expect(JSON.stringify(result)).not.toMatch(/SAP|AWS|Python/);
+});

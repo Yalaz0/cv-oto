@@ -11,6 +11,7 @@ import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/server";
 
 const steps = [
   {
@@ -23,9 +24,9 @@ const steps = [
   {
     number: "02",
     icon: KeyRound,
-    title: "Kendi Gemini anahtarınızı bağlayın",
+    title: "İlanı ekleyip kaynaklarınızı seçin",
     description:
-      "Hangi modelin kullanılacağını seçin. API anahtarınızı istediğiniz zaman kaldırın.",
+      "Gemini anahtarı gerekmez. Doğruladığınız bilgilerden başlayıp CV’nizi düzenleyin.",
   },
   {
     number: "03",
@@ -36,7 +37,36 @@ const steps = [
   },
 ];
 
-export default function Dashboard() {
+export default async function Dashboard() {
+  const client = await createClient();
+  const [profile, applications] = await Promise.all([
+    client
+      .from("master_resumes")
+      .select("document")
+      .eq("is_active", true)
+      .maybeSingle(),
+    client
+      .from("applications")
+      .select("id")
+      .is("archived_at", null)
+      .neq("status", "exported")
+      .order("updated_at", { ascending: false })
+      .limit(1),
+  ]);
+  const ready = Object.values(profile.data?.document?.registry ?? {}).some(
+    (claim) => {
+      const record = claim as { section?: string; status?: string };
+      return record.section === "basics" && record.status === "verified";
+    },
+  );
+  const next = ready
+    ? applications.data?.[0]
+      ? {
+          href: `/applications/${applications.data[0].id}`,
+          label: "Başvuruna devam et",
+        }
+      : { href: "/applications/new", label: "Yeni başvuru oluştur" }
+    : { href: "/profile", label: "Profilini tamamla" };
   return (
     <AppShell>
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
@@ -69,10 +99,15 @@ export default function Dashboard() {
             ifadeleri inceleyin, tasarımınızı koruyarak CV’nizi hazırlayın.
           </p>
           <Button asChild variant="secondary" className="mt-7 h-11">
-            <Link href="/applications/new">
-              İlana özel CV oluştur <ArrowRight className="ml-2 size-4" />
+            <Link href={next.href}>
+              {next.label} <ArrowRight className="ml-2 size-4" />
             </Link>
           </Button>
+          <p className="mt-4 text-sm">
+            <Link href="/demo" className="underline">
+              Örnek CV ve başvuru akışını incele
+            </Link>
+          </p>
         </div>
       </section>
       <section className="mt-10" aria-labelledby="steps-title">

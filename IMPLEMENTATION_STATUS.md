@@ -1,14 +1,25 @@
-# Implementation status
+# Uygulama durumu
 
-## Phase gates
+## Uygulanan ve doğrulanan
 
-| Phase | State | Evidence / next gate |
-| --- | --- | --- |
-| Prerequisite | Complete | Source PDF read and both pages visually inspected locally. |
-| 0 Foundation | Complete | Frozen install, Biome, typecheck, 4 unit tests, production build, 4 desktop/mobile browser tests including axe passed. |
-| 1 Auth/data | Complete | Supabase migration reset passed; 13 unit/RLS assertions validate ownership and stale-write conflict; public auth UI tests and real local registration, confirmation, session persistence, and sign-out flow passed. |
-| 2 Master profile | Complete | Structured CRUD covers basics, education, work, projects, skills, languages, and references; uploads are validated and re-encoded server-side; version history restores by creating a new immutable version; imported claims require per-section or explicit full confirmation; exports validate with the official `@jsonresume/schema`. Real local E2E covers profile persistence. |
-| 3 Canonical template | Awaiting visual acceptance | `mehmet-yalaz-v1` React/print CSS renderer, Turkish/English labels, A4 preview and content-driven pagination are implemented. Lint, typecheck, and production build passed. AI integration remains blocked by required private-reference visual acceptance. |
-| 4–9 | Not started | Sequential gates in PROJECT_SPEC.md apply. |
+- Kaynak profil sürümleri, doğrulama durumu, JSON Resume içe/dışa aktarma, fotoğraf işleme ve PDF metin içe aktarma bulunuyor.
+- Başvuru oluşturma, doğrulanmış profil önkoşulu, yinelenen istek koruması, arşivleme, çoğaltma ve silme uygulanmıştır.
+- Başvuru sayfası, başvuruya bağlanan değişmez profil sürümünden gerçek CV önizlemesi oluşturur. Kaynak seçimi, manuel düzenleme, 800 ms otomatik kayıt, sürüm çakışması, geri/ileri alma ve kaynak inceleme vardır.
+- Kurgusal Deniz Örnek profili ile Atlas Dağıtım, Northstar Analytics ve Delta Üretim örnekleri eklendi. `/demo` kaydetmeden akışı gösterir.
+- PDF üretimi kullanıcı sahipliği, tek kullanımlık baskı erişimi, A4 sayfalama, taşma/sayfa sınırı ve metin doğrulaması ile uygulanmıştır.
+- Gemini anahtarı tarayıcı dışında AES-256-GCM ile bekleyen kayda alınır; sağlayıcı testi sonrasında açık kullanıcı onayıyla etkinleşir.
 
-No claim of MVP readiness or production deployment is made by this document.
+## Kontrol sonuçları
+
+- Biome lint başarılı.
+- TypeScript denetimi başarılı.
+- Vitest: 13 dosya, 30 test başarılı. Profil hazırlığı, idempotent başvuru, kaynak sahipliği ve CV sürüm çakışması test edilir.
+
+## Dış ortamda tamamlanacak kabul kapıları
+
+- Gerçek Gemini anahtarıyla kontrollü sağlayıcı kabul testi.
+- Referans CV PDF’si ile insan tarafından görsel şablon kabulü.
+- Staging/Vercel ortamında Chromium PDF ve migration geri dönüş provası.
+- Chromium, Firefox ve WebKit erişilebilirlik/performans kabulü ile iki kullanıcı Storage izolasyonu.
+
+Bu belge yalnızca yukarıdaki kanıtları ifade eder; dış ortam kontrolleri tamamlanmadan uygulama üretime hazır kabul edilmez.

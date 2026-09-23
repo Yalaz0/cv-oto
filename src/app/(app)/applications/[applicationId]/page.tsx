@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
-import "@/components/template/cv-template.css";
 import { AppShell } from "@/components/app-shell";
-import { CvTemplate } from "@/components/template/cv-template";
+import { ResumeEditor } from "@/components/applications/resume-editor";
 import { createClient } from "@/lib/supabase/server";
+import { manualDocumentSchema } from "@/modules/editor/document";
+import { masterResumeSchema } from "@/modules/profile/schema";
+import { fromProfile } from "@/modules/template/from-profile";
 
 export default async function ApplicationPage({
   params,
@@ -11,81 +13,54 @@ export default async function ApplicationPage({
 }) {
   const { applicationId } = await params;
   const client = await createClient();
-  const { data } = await client
+  const { data: application, error } = await client
     .from("applications")
-    .select("company_name,job_title")
+    .select(
+      "id,company_name,job_title,job_description,document_locale,master_resume_version_id",
+    )
     .eq("id", applicationId)
     .maybeSingle();
-  if (!data) notFound();
+  if (error) throw new Error("Başvuru bağlantısı kurulamadı.");
+  if (!application) notFound();
+  const [source, saved] = await Promise.all([
+    client
+      .from("master_resume_versions")
+      .select("document")
+      .eq("id", application.master_resume_version_id)
+      .single(),
+    client
+      .from("tailored_resumes")
+      .select("id,document,current_revision")
+      .eq("application_id", applicationId)
+      .maybeSingle(),
+  ]);
+  if (source.error || saved.error) throw new Error("CV verileri yüklenemedi.");
+  const profile = masterResumeSchema.parse(source.data.document);
+  const selectedClaimIds = Object.values(profile.registry)
+    .filter((claim) => claim.status === "verified")
+    .map((claim) => claim.id);
+  const initial = saved.data
+    ? manualDocumentSchema.parse(saved.data.document)
+    : manualDocumentSchema.parse({
+        schemaVersion: "1.0",
+        templateId: "mehmet-yalaz-v1",
+        origin: "user",
+        selectedClaimIds,
+        pageLimit: 2,
+        cv: fromProfile(profile, selectedClaimIds, application.document_locale),
+      });
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl">
-        <p className="text-xs font-semibold tracking-[0.18em] text-primary">
-          BAŞVURU TASLAĞI
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold">
-          {data.job_title ?? "Pozisyon"}
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          {data.company_name ?? "Şirket belirtilmedi"}
-        </p>
-        <div className="mt-8 grid gap-6 lg:grid-cols-[42%_58%]">
-          <section className="rounded-xl border bg-card p-6">
-            <h2 className="font-semibold">CV hazırlama durumu</h2>
-            <ol className="mt-5 space-y-4 text-sm">
-              <li>
-                <strong>1. Profil</strong>
-                <p className="text-muted-foreground">
-                  Doğrulanmış kaynaklar kullanılacak.
-                </p>
-              </li>
-              <li>
-                <strong>2. İlan</strong>
-                <p className="text-muted-foreground">
-                  İlan kaydedildi; analiz başlatılmayı bekliyor.
-                </p>
-              </li>
-              <li>
-                <strong>3. Taslak CV</strong>
-                <p className="text-muted-foreground">
-                  Kaynak seçimi ve üretim tamamlandığında önizleme gerçek
-                  içerikle güncellenecek.
-                </p>
-              </li>
-            </ol>
-          </section>
-          <section className="overflow-hidden rounded-xl border bg-muted/40">
-            <div className="border-b bg-card px-5 py-3">
-              <h2 className="font-semibold">Canlı CV önizlemesi</h2>
-              <p className="text-xs text-muted-foreground">
-                Şablon görünümü · içerik oluşturulmayı bekliyor
-              </p>
-            </div>
-            <div className="max-h-[72vh] overflow-auto">
-              <div className="cv-canvas origin-top scale-[0.62] p-4">
-                <CvTemplate
-                  document={{
-                    locale: "tr-TR",
-                    basics: {
-                      name: "Ad Soyad",
-                      title: data.job_title ?? "Pozisyon",
-                      email: "Profil tamamlandığında eklenecek",
-                    },
-                    summary:
-                      "İlan analizi ve kaynak seçimi tamamlandığında doğrulanmış deneyimleriniz burada görünür.",
-                    education: [],
-                    work: [],
-                    skills: [],
-                    languages: [],
-                    projects: [],
-                    references: [],
-                  }}
-                />
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
+      <ResumeEditor
+        applicationId={applicationId}
+        title={application.job_title || "Başvuru"}
+        company={application.company_name || ""}
+        jobDescription={application.job_description}
+        profile={profile}
+        initialDocument={initial}
+        initialRevision={saved.data?.current_revision ?? 0}
+        initialResumeId={saved.data?.id}
+      />
     </AppShell>
   );
 }

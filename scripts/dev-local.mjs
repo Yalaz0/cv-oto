@@ -9,12 +9,23 @@ const supabaseEntry = fileURLToPath(
 const nextEntry = fileURLToPath(
   new URL("../node_modules/next/dist/bin/next", import.meta.url),
 );
-const { stdout } = await execFileAsync(process.execPath, [
-  supabaseEntry,
-  "status",
-  "-o",
-  "env",
-]);
+let stdout;
+try {
+  await execFileAsync("docker", ["info", "--format", "{{.ServerVersion}}"]);
+} catch {
+  console.error("Docker çalışmıyor. Docker Desktop’ı açıp yeniden deneyin.");
+  process.exit(1);
+}
+try {
+  ({ stdout } = await execFileAsync(
+    process.execPath,
+    [supabaseEntry, "status", "-o", "env"],
+    { env: { ...process.env, SUPABASE_DISABLE_TELEMETRY: "1" } },
+  ));
+} catch {
+  console.error("Yerel Supabase hazır değil. Önce pnpm db:start çalıştırın.");
+  process.exit(1);
+}
 const values = Object.fromEntries(
   stdout
     .split(/\r?\n/)

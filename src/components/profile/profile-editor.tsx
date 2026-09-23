@@ -16,14 +16,19 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { demoResume } from "@/modules/demo/fixtures";
 import {
   getJsonResumeExport,
   importJsonResume,
+  importPdfResume,
   restoreProfileVersion,
   saveProfile,
   uploadProfilePhoto,
 } from "@/modules/profile/actions";
-import { createMasterDocument } from "@/modules/profile/json-resume";
+import {
+  createMasterDocument,
+  reconcileMasterDocument,
+} from "@/modules/profile/json-resume";
 import type { MasterResumeDocument } from "@/modules/profile/schema";
 
 type Props = {
@@ -69,11 +74,21 @@ export function ProfileEditor({
   initialVersion,
   history,
 }: Props) {
-  const [document, setDocument] = useState(initialDocument ?? starter);
+  const [document, setRawDocument] = useState(initialDocument ?? starter);
+  const setDocument = (
+    update:
+      | MasterResumeDocument
+      | ((current: MasterResumeDocument) => MasterResumeDocument),
+  ) =>
+    setRawDocument((current) => {
+      const next = typeof update === "function" ? update(current) : update;
+      return reconcileMasterDocument(next, current);
+    });
   const [id, setId] = useState(initialId ?? crypto.randomUUID());
   const [version, setVersion] = useState(initialVersion);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [extractedText, setExtractedText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const verified = useMemo(
     () =>
@@ -154,35 +169,42 @@ export function ProfileEditor({
       return;
     }
     setSaving(true);
-    const containsUnreviewedClaims = Object.values(document.registry).some(
-      (claim) => claim.status === "needs_review",
-    );
-    const rebuilt = createMasterDocument(
-      document.resume,
-      document.locale,
-      containsUnreviewedClaims ? "needs_review" : "verified",
-      statusesBySection(),
-    );
-    setDocument(rebuilt);
-    const result = await saveProfile({
-      id,
-      expectedVersion: version,
-      document: rebuilt,
-      changeSource: "manual",
-    });
-    setSaving(false);
-    if (result.error) return toast.error(result.error);
-    setVersion(result.version ?? version);
-    setId(result.id ?? id);
-    toast.success("Profil sürümü kaydedildi.");
+    try {
+      const result = await saveProfile({
+        id,
+        expectedVersion: version,
+        document,
+        changeSource: "manual",
+      });
+      setSaving(false);
+      if (result.error) return toast.error(result.error);
+      setVersion(result.version ?? version);
+      setId(result.id ?? id);
+      toast.success("Profil sürümü kaydedildi.");
+    } catch {
+      toast.error("Bağlantı kurulamadı. Değişiklikleriniz korunuyor.");
+    } finally {
+      setSaving(false);
+    }
   };
   const onImport = async (file: File | undefined) => {
     if (!file) return;
-    const result = await importJsonResume(await file.text(), document.locale);
+    const data = new FormData();
+    data.set("resume", file);
+    const result = file.name.toLowerCase().endsWith(".pdf")
+      ? await importPdfResume(data, document.locale)
+      : await importJsonResume(await file.text(), document.locale);
     if (result.error || !result.document) return toast.error(result.error);
-    setDocument(result.document as MasterResumeDocument);
-    setId(result.id ?? crypto.randomUUID());
-    setVersion(0);
+    if (
+      !window.confirm(
+        "İçe aktarılan bilgiler mevcut düzenleme alanına aktarılsın mı? Kaydedene kadar mevcut sürümünüz korunur.",
+      )
+    )
+      return;
+    setRawDocument(result.document as MasterResumeDocument);
+    setExtractedText(
+      "extractedText" in result ? String(result.extractedText ?? "") : "",
+    );
     toast.success("İçe aktarılan bilgiler inceleme bekliyor.");
   };
   const onPhoto = async (file: File | undefined) => {
@@ -226,8 +248,20 @@ export function ProfileEditor({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {version === 0 && !document.resume.basics.name && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                setRawDocument(
+                  createMasterDocument(demoResume, "tr-TR", "needs_review"),
+                )
+              }
+            >
+              Örnek verilerle başla
+            </Button>
+          )}
           <Button variant="outline" onClick={() => fileRef.current?.click()}>
-            <FileUp /> JSON Resume içe aktar
+            <FileUp /> CV yükle (PDF / JSON)
           </Button>
           <Button
             variant="outline"
@@ -242,11 +276,25 @@ export function ProfileEditor({
             ref={fileRef}
             className="hidden"
             type="file"
-            accept="application/json,.json"
+            accept="application/json,application/pdf,.json,.pdf"
             onChange={(event) => onImport(event.target.files?.[0])}
           />
         </div>
       </header>
+      {extractedText && (
+        <details className="rounded border p-4" open>
+          <summary>
+            PDF kaynak metni · alanları bu metinle karşılaştırın
+          </summary>
+          <p className="my-2 text-sm">
+            Bölümler yaklaşık çıkarıldı. Birden fazla kayıt tek alanda olabilir;
+            gerekli kayıtları ayırıp doğrulayın.
+          </p>
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-sm">
+            {extractedText}
+          </pre>
+        </details>
+      )}
       <section className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-3">
         <div className="flex items-center gap-3">
           <ShieldCheck className="size-5 text-primary" />
@@ -358,6 +406,7 @@ export function ProfileEditor({
       <section className="grid gap-5 md:grid-cols-2">
         {sections.map(([key, label]) => (
           <StructuredSection
+            section={key}
             items={document.resume[key]}
             key={key}
             label={label}
@@ -388,9 +437,21 @@ export function ProfileEditor({
           className="mt-4"
           variant="outline"
           onClick={() =>
-            setDocument((current) =>
-              createMasterDocument(current.resume, current.locale, "verified"),
-            )
+            setRawDocument((current) => ({
+              ...current,
+              registry: Object.fromEntries(
+                Object.entries(current.registry).map(([key, claim]) => [
+                  key,
+                  { ...claim, status: "verified" as const },
+                ]),
+              ),
+              itemMetadata: Object.fromEntries(
+                Object.entries(current.itemMetadata).map(([key, metadata]) => [
+                  key,
+                  { ...metadata, status: "verified" as const },
+                ]),
+              ),
+            }))
           }
         >
           Tüm ifadeleri doğrula
@@ -428,10 +489,12 @@ export function ProfileEditor({
 }
 
 function StructuredSection({
+  section,
   label,
   items,
   onChange,
 }: {
+  section: string;
   label: string;
   items: Record<string, unknown>[];
   onChange: (items: Record<string, unknown>[]) => void;
@@ -460,7 +523,7 @@ function StructuredSection({
           : typeof item.fluency === "string"
             ? item.fluency
             : "";
-  const update = (index: number, key: "name" | "details", value: string) =>
+  const update = (index: number, key: string, value: string) =>
     onChange(
       items.map((item, itemIndex) =>
         itemIndex === index ? { ...item, [key]: value } : item,
@@ -562,6 +625,35 @@ function StructuredSection({
               value={detailsOf(item)}
               onChange={(event) => update(index, "details", event.target.value)}
             />
+            {(section === "work"
+              ? [
+                  ["position", "Unvan"],
+                  ["startDate", "Başlangıç (YYYY-MM)"],
+                  ["endDate", "Bitiş (boşsa devam ediyor)"],
+                ]
+              : section === "education"
+                ? [
+                    ["area", "Bölüm"],
+                    ["studyType", "Derece"],
+                    ["startDate", "Başlangıç"],
+                    ["endDate", "Bitiş"],
+                  ]
+                : section === "projects"
+                  ? [
+                      ["url", "Proje bağlantısı"],
+                      ["startDate", "Tarih"],
+                    ]
+                  : section === "languages"
+                    ? [["fluency", "Seviye"]]
+                    : []
+            ).map(([key, label]) => (
+              <Field
+                key={key}
+                label={`${label} · ${index + 1}`}
+                value={String(item[key] ?? "")}
+                onChange={(value) => update(index, key, value)}
+              />
+            ))}
           </div>
         ))}
       </div>

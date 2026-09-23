@@ -196,6 +196,9 @@ importers:
       pdf-parse:
         specifier: 2.4.5
         version: 2.4.5
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
       radix-ui:
         specifier: ^1.6.7
         version: 1.6.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

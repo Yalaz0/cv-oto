@@ -1,9 +1,9 @@
 # CV Tailor
 
-Turkish-first resume tailoring with verified source claims, a fixed two-page
-template, Gemini BYOK, and server-rendered PDF output. `PROJECT_SPEC.md` is the
-implementation contract. See `IMPLEMENTATION_STATUS.md` for actual phase progress;
-the repository is not yet a completed MVP.
+Turkish-first resume tailoring with verified source claims, flexible A4 page
+preferences, optional Gemini BYOK, and server-rendered PDF output. `PROJECT_SPEC.md`
+is the implementation contract. See `IMPLEMENTATION_STATUS.md` for verified progress
+and external release gates.
 
 ## Development
 
@@ -19,6 +19,10 @@ If system-wide Corepack shims are unavailable, `corepack pnpm` works directly.
 For this workspace a local shim is also available in `.cache/bin`.
 Open http://localhost:3000. Inter fonts are bundled locally; build does not fetch
 Google Fonts. Runtime production configuration is validated at startup.
+
+Open `/demo` to inspect the fictional Deniz Örnek flow without saving data. To use
+the saved flow, register, select **Örnek verilerle başla** on the source profile
+page, verify the imported claims, save, and create the Atlas example application.
 
 ## Local Supabase
 

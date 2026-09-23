@@ -18,7 +18,9 @@ const document = {
     education: [],
     skills: [],
   },
-  registry: { claims: [] },
+  registry: {
+    basics: { section: "basics", status: "verified", text: "Test User" },
+  },
   itemMetadata: {},
 };
 
@@ -100,11 +102,10 @@ describe("Supabase RLS and optimistic concurrency", () => {
 
   it("creates an application from the active verified profile version", async () => {
     const created = await asUser(ownerA, (client) =>
-      client.query("select public.create_application($1, $2, $3) as id", [
-        "Example",
-        "Analyst",
-        "A".repeat(200),
-      ]),
+      client.query(
+        "select public.create_application($1, $2, $3, $4, $5) as id",
+        ["Example", "Analyst", "A".repeat(200), "tr-TR", randomUUID()],
+      ),
     );
     expect(created.rows[0].id).toMatch(/[0-9a-f-]{36}/);
   });

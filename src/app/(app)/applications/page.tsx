@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
+import { ApplicationActions } from "@/components/applications/application-actions";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,7 +8,7 @@ export default async function ApplicationsPage() {
   const client = await createClient();
   const { data } = await client
     .from("applications")
-    .select("id,company_name,job_title,status,updated_at")
+    .select("id,company_name,job_title,status,updated_at,archived_at")
     .order("updated_at", { ascending: false });
   return (
     <AppShell>
@@ -26,18 +27,25 @@ export default async function ApplicationsPage() {
         <div className="mt-8 space-y-3">
           {data?.length ? (
             data.map((item) => (
-              <Link
-                className="block rounded-xl border bg-card p-5 transition-colors hover:bg-muted/40"
-                href={`/applications/${item.id}`}
-                key={item.id}
-              >
-                <p className="font-medium">
-                  {item.job_title ?? "Pozisyon belirtilmedi"}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {item.company_name ?? "Şirket belirtilmedi"} · {item.status}
-                </p>
-              </Link>
+              <div className="rounded-xl border bg-card p-5" key={item.id}>
+                <Link
+                  className="block transition-colors hover:bg-muted/40"
+                  href={`/applications/${item.id}`}
+                >
+                  <p className="font-medium">
+                    {item.job_title ?? "Pozisyon belirtilmedi"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {item.company_name ?? "Şirket belirtilmedi"} · {item.status}
+                  </p>
+                </Link>
+                <div className="mt-4">
+                  <ApplicationActions
+                    id={item.id}
+                    archived={Boolean(item.archived_at)}
+                  />
+                </div>
+              </div>
             ))
           ) : (
             <div className="rounded-xl border border-dashed p-8 text-sm text-muted-foreground">

@@ -6,17 +6,23 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { stageGoogleCredential } from "@/modules/credentials/actions";
+import {
+  activateGoogleCredential,
+  revokeGoogleCredential,
+  stageGoogleCredential,
+} from "@/modules/credentials/actions";
 
 export function AiCredentialForm() {
   const [apiKey, setApiKey] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tested, setTested] = useState(false);
   const submit = async () => {
     setLoading(true);
     const result = await stageGoogleCredential(apiKey, "gemini-2.5-flash");
     setLoading(false);
     if (result.error) return toast.error(result.error);
     setApiKey("");
+    setTested(true);
     toast.success(result.success);
   };
   return (
@@ -54,6 +60,35 @@ export function AiCredentialForm() {
       >
         <KeyRound /> {loading ? "Güvenli kayda alınıyor" : "Bağlantıyı hazırla"}
       </Button>
+      {tested && (
+        <div className="mt-3 flex gap-2">
+          <Button
+            onClick={async () => {
+              setLoading(true);
+              const result = await activateGoogleCredential();
+              setLoading(false);
+              if (result.error) toast.error(result.error);
+              else {
+                setTested(false);
+                toast.success(result.success);
+              }
+            }}
+            disabled={loading}
+          >
+            Bağlantıyı kaydet
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const result = await revokeGoogleCredential();
+              if (result.error) toast.error(result.error);
+              else toast.success(result.success);
+            }}
+          >
+            Bağlantıyı kaldır
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

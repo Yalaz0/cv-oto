@@ -7,8 +7,10 @@ import { PDFParse } from "pdf-parse";
 import sharp from "sharp";
 import { z } from "zod";
 import { parsePublicEnv } from "@/lib/env";
+import { isAllowedOrigin } from "@/lib/origin";
 import { createClient } from "@/lib/supabase/server";
 import { createMasterDocument, exportJsonResume } from "./json-resume";
+import { parseResumeText } from "./pdf-text";
 import { masterResumeSchema, profileSaveSchema } from "./schema";
 
 export type ProfileActionState = {
@@ -20,7 +22,11 @@ export type ProfileActionState = {
 async function requireSameOrigin() {
   const origin = (await headers()).get("origin");
   if (
-    origin !== new URL(parsePublicEnv(process.env).NEXT_PUBLIC_APP_URL).origin
+    !isAllowedOrigin(
+      origin,
+      parsePublicEnv(process.env).NEXT_PUBLIC_APP_URL,
+      process.env.NODE_ENV === "development",
+    )
   )
     throw new Error("INVALID_ORIGIN");
 }
@@ -101,6 +107,9 @@ export async function importPdfResume(
 ) {
   await requireSameOrigin();
   const file = formData.get("resume");
+  const client = await createClient();
+  if (!(await client.auth.getUser()).data.user)
+    return { error: "Oturumunuz sona erdi." };
   if (
     !(file instanceof File) ||
     file.type !== "application/pdf" ||
@@ -109,36 +118,26 @@ export async function importPdfResume(
     return { error: "En fazla 10 MB PDF seçin." };
   let parser: PDFParse | undefined;
   try {
-    parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) });
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (bytes.subarray(0, 5).toString() !== "%PDF-")
+      return { error: "Dosya geçerli bir PDF değil." };
+    parser = new PDFParse({ data: bytes });
     const { text } = await parser.getText();
-    const lines = text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const email =
-      lines
-        .find((line) => /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/.test(line))
-        ?.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] ?? "";
-    const phone = lines.find((line) => /\+?\d[\d ()-]{7,}/.test(line)) ?? "";
-    const document = createMasterDocument(
-      {
-        basics: {
-          name: lines[0] ?? "",
-          email,
-          phone,
-          summary: lines.slice(1, 6).join(" "),
-        },
-        work: [],
-        education: [],
-        projects: [],
-        skills: [],
-        languages: [],
-        references: [],
-      },
-      locale,
-      "needs_review",
-    );
-    return { id: randomUUID(), version: 0, document };
+    if (text.trim().length < 30)
+      return {
+        error:
+          "PDF’de okunabilir metin bulunamadı. OCR desteklenmiyor; manuel giriş kullanın.",
+      };
+    return {
+      id: randomUUID(),
+      version: 0,
+      document: createMasterDocument(
+        parseResumeText(text),
+        locale,
+        "needs_review",
+      ),
+      extractedText: text,
+    };
   } catch {
     return {
       error: "PDF metni okunamadı. Taranmış PDF için manuel giriş kullanın.",

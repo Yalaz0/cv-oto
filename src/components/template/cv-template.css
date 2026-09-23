@@ -30,6 +30,44 @@
   border-radius: 50%;
   object-fit: cover;
 }
+.cv-header:not(:has(.cv-photo)) {
+  grid-template-columns: minmax(0, 1fr) 52mm;
+}
+.cv-measure {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  width: 210mm;
+}
+.cv-page {
+  position: relative;
+  height: 297mm;
+  min-height: 297mm;
+  margin-bottom: 16px;
+}
+.cv-page .cv-content {
+  min-height: 0;
+}
+.cv-page .cv-primary,
+.cv-page .cv-sidebar {
+  min-height: 0;
+  height: 100%;
+}
+@media print {
+  .cv-measure {
+    display: none;
+  }
+  .cv-page {
+    height: 297mm;
+    min-height: 297mm;
+    margin: 0;
+    break-after: page;
+  }
+  .cv-page:last-child {
+    break-after: auto;
+  }
+}
 .cv-identity h1 {
   color: #00366d;
   font-size: 23pt;
