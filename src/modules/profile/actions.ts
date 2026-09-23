@@ -10,6 +10,8 @@ import { parsePublicEnv } from "@/lib/env";
 import { isAllowedOrigin } from "@/lib/origin";
 import { createClient } from "@/lib/supabase/server";
 import { createMasterDocument, exportJsonResume } from "./json-resume";
+import { recognizePdfWithOcr } from "./ocr.server";
+import { extractPdfImport, type PdfImportResult } from "./pdf-import";
 import { parseResumeText } from "./pdf-text";
 import { masterResumeSchema, profileSaveSchema } from "./schema";
 
@@ -108,11 +110,13 @@ export async function importPdfResume(
   await requireSameOrigin();
   const file = formData.get("resume");
   const client = await createClient();
-  if (!(await client.auth.getUser()).data.user)
-    return { error: "Oturumunuz sona erdi." };
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  if (!user) return { error: "Oturumunuz sona erdi." };
   if (
     !(file instanceof File) ||
-    file.type !== "application/pdf" ||
+    (file.type && file.type !== "application/pdf") ||
     file.size > 10 * 1024 * 1024
   )
     return { error: "En fazla 10 MB PDF seçin." };
@@ -121,22 +125,56 @@ export async function importPdfResume(
     const bytes = Buffer.from(await file.arrayBuffer());
     if (bytes.subarray(0, 5).toString() !== "%PDF-")
       return { error: "Dosya geçerli bir PDF değil." };
+    const importAssetId = randomUUID();
+    const { error: initialUploadError } = await client.storage
+      .from("resume-imports")
+      .upload(`${user.id}/${importAssetId}.pdf`, bytes, {
+        contentType: "application/pdf",
+        upsert: false,
+        cacheControl: "private, max-age=0",
+      });
+    if (initialUploadError)
+      return { error: "PDF güvenli saklamaya alınamadı. Yeniden deneyin." };
     parser = new PDFParse({ data: bytes });
     const { text } = await parser.getText();
-    if (text.trim().length < 30)
+    let extracted: PdfImportResult;
+    try {
+      extracted = await extractPdfImport(text, () =>
+        recognizePdfWithOcr(bytes),
+      );
+    } catch {
       return {
         error:
-          "PDF’de okunabilir metin bulunamadı. OCR desteklenmiyor; manuel giriş kullanın.",
+          "PDF tarandı ancak OCR metin üretemedi. Dosya korunuyor; aşağıdaki manuel incelemeyle devam edebilirsiniz.",
+        manualFallback: true,
+        id: randomUUID(),
+        version: 0,
+        document: createMasterDocument({}, locale, "needs_review"),
+        extractedText: "",
+        importAssetId,
       };
+    }
+    const assetId = importAssetId;
+    const { error: uploadError } = await client.storage
+      .from("resume-imports")
+      .upload(`${user.id}/${assetId}.pdf`, bytes, {
+        contentType: "application/pdf",
+        upsert: true,
+        cacheControl: "private, max-age=0",
+      });
+    if (uploadError)
+      return { error: "PDF güvenli saklamaya alınamadı. Yeniden deneyin." };
     return {
       id: randomUUID(),
       version: 0,
       document: createMasterDocument(
-        parseResumeText(text),
+        parseResumeText(extracted.text),
         locale,
         "needs_review",
       ),
-      extractedText: text,
+      extractedText: extracted.text,
+      importAssetId: assetId,
+      method: extracted.method,
     };
   } catch {
     return {
@@ -155,6 +193,7 @@ export async function getJsonResumeExport(document: unknown) {
 export async function uploadProfilePhoto(formData: FormData): Promise<{
   error?: string;
   imageUrl?: string;
+  assetId?: string;
 }> {
   await requireSameOrigin();
   const photo = formData.get("photo");
@@ -184,7 +223,10 @@ export async function uploadProfilePhoto(formData: FormData): Promise<{
         cacheControl: "private, max-age=3600",
       });
     if (error) return { error: "Fotoğraf kaydedilemedi." };
-    return { imageUrl: "/api/profile/photo" };
+    return {
+      imageUrl: "/api/profile/photo",
+      assetId: `${user.id}/profile.jpg`,
+    };
   } catch {
     return { error: "Fotoğraf dosyası işlenemedi." };
   }

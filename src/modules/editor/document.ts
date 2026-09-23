@@ -28,6 +28,7 @@ export const manualDocumentSchema = z.object({
       phone: text.optional(),
       location: text.optional(),
       url: text.optional(),
+      image: text.optional(),
     }),
     summary: text.optional(),
     work: z.array(entry).max(80),

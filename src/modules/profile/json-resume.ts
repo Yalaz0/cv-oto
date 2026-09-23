@@ -104,7 +104,9 @@ export function exportJsonResume(document: MasterResumeDocument) {
     }
     return value;
   };
-  const resume = compact(jsonResumeSchema.parse(document.resume));
+  const parsed = jsonResumeSchema.parse(document.resume);
+  const { photoAssetId: _photoAssetId, ...basics } = parsed.basics;
+  const resume = compact({ ...parsed, basics });
   let valid = false;
   validate(resume, (errors, result) => {
     valid = !errors && result;

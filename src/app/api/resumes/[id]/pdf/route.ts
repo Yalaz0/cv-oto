@@ -103,8 +103,7 @@ export async function POST(
     });
     parser = new PDFParse({ data: pdf });
     const info = await parser.getInfo();
-    if (document.pageLimit !== "auto" && info.total > document.pageLimit)
-      return fail("PAGE_LIMIT_EXCEEDED", 422);
+    if (info.total > 2) return fail("PAGE_LIMIT_EXCEEDED", 422);
     const extracted = await parser.getText();
     if (!extracted.text.includes(document.cv.basics.name))
       return fail("PDF_VALIDATION_FAILED", 422);

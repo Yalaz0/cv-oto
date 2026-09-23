@@ -30,7 +30,9 @@ export default async function ApplicationPage({
       .single(),
     client
       .from("tailored_resumes")
-      .select("id,document,current_revision")
+      .select(
+        "id,name,document,current_revision,tailored_resume_revisions(revision,created_at,change_source,document)",
+      )
       .eq("application_id", applicationId)
       .maybeSingle(),
   ]);
@@ -60,6 +62,20 @@ export default async function ApplicationPage({
         initialDocument={initial}
         initialRevision={saved.data?.current_revision ?? 0}
         initialResumeId={saved.data?.id}
+        initialName={
+          saved.data?.name ??
+          (application.company_name && application.job_title
+            ? `${application.company_name} - ${application.job_title} CV`
+            : "Untitled CV")
+        }
+        revisions={(saved.data?.tailored_resume_revisions ?? []).map(
+          (item) => ({
+            revision: item.revision,
+            createdAt: item.created_at,
+            source: item.change_source,
+            document: manualDocumentSchema.parse(item.document),
+          }),
+        )}
       />
     </AppShell>
   );

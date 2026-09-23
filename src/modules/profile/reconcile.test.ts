@@ -28,3 +28,11 @@ it("does not invent job requirements or include unselected sources", () => {
   expect(result.work).toEqual([]);
   expect(JSON.stringify(result)).not.toMatch(/SAP|AWS|Python/);
 });
+
+it("carries a persisted profile photo into the CV document", () => {
+  const profile = createMasterDocument(demoResume, "tr-TR", "verified");
+  profile.resume.basics.image = "/api/profile/photo";
+  profile.resume.basics.photoAssetId = "user-id/profile.jpg";
+  const result = fromProfile(profile, Object.keys(profile.registry));
+  expect(result.basics.image).toBe("/api/profile/photo");
+});

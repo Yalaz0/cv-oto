@@ -1,10 +1,15 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PaginatedCv } from "@/components/template/paginated-cv";
 import "@/components/template/cv-template.css";
 import { Button } from "@/components/ui/button";
 import { rankVerifiedClaims } from "@/modules/applications/matching";
-import { saveManualCv } from "@/modules/editor/actions";
+import {
+  renameTailoredResume,
+  restoreTailoredRevision,
+  saveManualCv,
+} from "@/modules/editor/actions";
 import type { ManualDocument } from "@/modules/editor/document";
 import type { MasterResumeDocument } from "@/modules/profile/schema";
 import { fromProfile } from "@/modules/template/from-profile";
@@ -18,6 +23,8 @@ export function ResumeEditor({
   initialDocument,
   initialRevision,
   initialResumeId,
+  initialName = "Untitled CV",
+  revisions = [],
 }: {
   applicationId?: string;
   title: string;
@@ -27,10 +34,21 @@ export function ResumeEditor({
   initialDocument: ManualDocument;
   initialRevision: number;
   initialResumeId?: string;
+  initialName?: string;
+  revisions?: Array<{
+    revision: number;
+    createdAt: string;
+    source: string;
+    document: ManualDocument;
+  }>;
 }) {
   const [document, setDocument] = useState(initialDocument);
   const [revision, setRevision] = useState(initialRevision);
   const [resumeId, setResumeId] = useState(initialResumeId);
+  const [name, setName] = useState(initialName);
+  const [zoom, setZoom] = useState<"fit" | 75 | 100 | 125>("fit");
+  const [layout, setLayout] = useState({ pages: 0, overflow: false });
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [reviewedPayload, setReviewedPayload] = useState("");
   const [pdfError, setPdfError] = useState("");
@@ -59,6 +77,7 @@ export function ResumeEditor({
       const result = await saveManualCv({
         applicationId,
         expectedRevision: revision,
+        name,
         document: JSON.parse(payload),
       });
       if (result.error) {
@@ -76,7 +95,7 @@ export function ResumeEditor({
     } finally {
       setPending(false);
     }
-  }, [applicationId, revision, payload]);
+  }, [applicationId, revision, payload, name]);
   useEffect(() => {
     if (!dirty || pending || conflict || error || !applicationId) return;
     const timer = setTimeout(() => void save(), 800);
@@ -95,7 +114,14 @@ export function ResumeEditor({
   const updateSummary = (summary: string) =>
     change({ ...document, cv: { ...document.cv, summary } });
   const downloadPdf = async () => {
-    if (!resumeId || dirty || reviewedPayload !== payload) return;
+    if (
+      !resumeId ||
+      dirty ||
+      reviewedPayload !== payload ||
+      layout.overflow ||
+      layout.pages > 2
+    )
+      return;
     setExporting(true);
     setPdfError("");
     try {
@@ -128,6 +154,15 @@ export function ResumeEditor({
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header>
+        <nav
+          aria-label="Gezinti"
+          className="mb-2 text-sm text-muted-foreground"
+        >
+          <Link href="/applications" className="underline">
+            Başvurular
+          </Link>{" "}
+          / {title} / CV düzenle
+        </nav>
         <p className="text-sm text-muted-foreground">
           {company} ·{" "}
           {applicationId ? "Manuel CV" : "Kurgusal örnek · kayıt yapılmaz"}
@@ -138,6 +173,11 @@ export function ResumeEditor({
         </p>
       </header>
       <div className="flex flex-wrap items-center gap-3">
+        <Button asChild variant="outline">
+          <Link href={`/applications/${applicationId ?? ""}`}>
+            ← Başvuruya dön
+          </Link>
+        </Button>
         <Button
           disabled={!past.current.length}
           variant="outline"
@@ -186,7 +226,10 @@ export function ResumeEditor({
             Yeniden dene
           </Button>
         )}
-        <label className="text-sm">
+        <span className="text-sm text-muted-foreground">
+          Mehmet Yalaz şablonu · sabit 2 A4 sayfa
+        </span>
+        <label className="hidden text-sm">
           Sayfa tercihi{" "}
           <select
             className="rounded border p-2"
@@ -215,6 +258,24 @@ export function ResumeEditor({
       )}
       <div className="flex flex-wrap items-center gap-3 rounded border p-3">
         <label className="text-sm">
+          CV adı{" "}
+          <input
+            className="ml-2 rounded border p-1"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onBlur={async () => {
+              if (resumeId && name.trim())
+                await renameTailoredResume({ id: resumeId, name });
+            }}
+          />
+        </label>
+        <Button
+          variant="outline"
+          onClick={() => setHistoryOpen((open) => !open)}
+        >
+          Sürüm geçmişi
+        </Button>
+        <label className="text-sm">
           <input
             type="checkbox"
             checked={reviewedPayload === payload}
@@ -231,7 +292,9 @@ export function ResumeEditor({
             dirty ||
             pending ||
             exporting ||
-            reviewedPayload !== payload
+            reviewedPayload !== payload ||
+            layout.overflow ||
+            layout.pages > 2
           }
         >
           {exporting ? "PDF hazırlanıyor…" : "PDF indir"}
@@ -247,6 +310,62 @@ export function ResumeEditor({
           Belge etiketleri seçtiğiniz dilde gösterilir. Kaynak metin otomatik
           çevrilmez; içerik dilini düzenleyin.
         </p>
+      )}
+      {(layout.overflow || layout.pages > 2) && (
+        <p
+          role="alert"
+          className="rounded border border-destructive p-3 text-sm text-destructive"
+        >
+          İçerik sabit iki sayfalık şablona sığmıyor. PDF indirilemez; metni
+          veya bölümleri azaltın.
+        </p>
+      )}
+      {historyOpen && (
+        <aside className="rounded-xl border p-4" aria-label="Sürüm geçmişi">
+          <h2 className="font-semibold">Sürüm geçmişi</h2>
+          <div className="mt-3 space-y-2">
+            {revisions.map((item) => (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 rounded border p-2"
+                key={item.revision}
+              >
+                <span>
+                  Sürüm {item.revision} ·{" "}
+                  {new Date(item.createdAt).toLocaleString("tr-TR")} ·{" "}
+                  {item.source}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => change(item.document)}
+                  >
+                    Önizle
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      if (!resumeId) return;
+                      const result = await restoreTailoredRevision({
+                        id: resumeId,
+                        revision: item.revision,
+                      });
+                      if (result.error || !result.document)
+                        return setError(
+                          result.error ?? "Sürüm geri yüklenemedi.",
+                        );
+                      setDocument(result.document as ManualDocument);
+                      setRevision(result.revision ?? revision);
+                      setSaved(JSON.stringify(result.document));
+                    }}
+                  >
+                    Geri yükle
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
       )}
       <div className="flex gap-2 lg:hidden">
         <Button
@@ -505,10 +624,36 @@ export function ResumeEditor({
               İçerik hemen güncellenir. A4 görünümü.
             </p>
           </div>
-          <div className="max-h-[80vh] overflow-auto">
+          <div className="flex flex-wrap gap-2 border-b bg-card p-3">
+            <span className="text-xs">Yakınlaştır:</span>
+            {(["fit", 75, 100, 125] as const).map((value) => (
+              <Button
+                key={String(value)}
+                size="sm"
+                variant={zoom === value ? "default" : "outline"}
+                onClick={() => setZoom(value)}
+              >
+                {value === "fit" ? "Sığdır" : `%${value}`}
+              </Button>
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                globalThis.document
+                  .getElementById("cv-preview")
+                  ?.requestFullscreen?.()
+              }
+            >
+              Tam ekran
+            </Button>
+          </div>
+          <div id="cv-preview" className="max-h-[80vh] overflow-auto">
             <PaginatedCv
               document={document.cv}
               pageLimit={document.pageLimit}
+              zoom={zoom}
+              onLayoutChange={setLayout}
             />
           </div>
         </section>

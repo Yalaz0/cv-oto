@@ -89,6 +89,7 @@ export function ProfileEditor({
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [extractedText, setExtractedText] = useState("");
+  const [importStage, setImportStage] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const verified = useMemo(
     () =>
@@ -189,12 +190,23 @@ export function ProfileEditor({
   };
   const onImport = async (file: File | undefined) => {
     if (!file) return;
+    setImportStage(
+      file.name.toLowerCase().endsWith(".pdf")
+        ? "PDF okunuyor"
+        : "Çıkarılan veriler inceleniyor",
+    );
+    const ocrTimer = file.name.toLowerCase().endsWith(".pdf")
+      ? window.setTimeout(() => setImportStage("OCR çalışıyor"), 500)
+      : undefined;
     const data = new FormData();
     data.set("resume", file);
     const result = file.name.toLowerCase().endsWith(".pdf")
       ? await importPdfResume(data, document.locale)
       : await importJsonResume(await file.text(), document.locale);
-    if (result.error || !result.document) return toast.error(result.error);
+    if (ocrTimer) window.clearTimeout(ocrTimer);
+    if (!result.document)
+      return toast.error(result.error ?? "Dosya içe aktarılamadı.");
+    setImportStage("Çıkarılan veriler inceleniyor");
     if (
       !window.confirm(
         "İçe aktarılan bilgiler mevcut düzenleme alanına aktarılsın mı? Kaydedene kadar mevcut sürümünüz korunur.",
@@ -215,7 +227,17 @@ export function ProfileEditor({
     const result = await uploadProfilePhoto(formData);
     setUploadingPhoto(false);
     if (result.error || !result.imageUrl) return toast.error(result.error);
-    updateBasics("image", result.imageUrl);
+    setRawDocument((current) => ({
+      ...current,
+      resume: {
+        ...current.resume,
+        basics: {
+          ...current.resume.basics,
+          image: result.imageUrl ?? "",
+          photoAssetId: result.assetId ?? "",
+        },
+      },
+    }));
     toast.success(
       "Fotoğraf hazır. Kalıcı olması için profil sürümünü kaydedin.",
     );
@@ -281,6 +303,14 @@ export function ProfileEditor({
           />
         </div>
       </header>
+      {importStage && (
+        <output className="rounded border p-3 text-sm">
+          {importStage}
+          {importStage === "Çıkarılan veriler inceleniyor"
+            ? " · Alanları düzenleyin, ardından doğrulayıp profil sürümünü kaydedin."
+            : "…"}
+        </output>
+      )}
       {extractedText && (
         <details className="rounded border p-4" open>
           <summary>

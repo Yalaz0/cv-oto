@@ -65,9 +65,18 @@ export function CvTemplate({ document }: { document: CvTemplateDocument }) {
   return (
     <article className="cv-document" data-template="mehmet-yalaz-v1">
       <header className="cv-header">
-        {document.basics.image && (
+        {document.basics.image ? (
           // biome-ignore lint/performance/noImgElement: Print template needs an unoptimized same-origin image.
           <img alt="" className="cv-photo" src={document.basics.image} />
+        ) : (
+          <div className="cv-photo cv-photo-fallback">
+            {document.basics.name
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part[0])
+              .join("") || "CV"}
+          </div>
         )}
         <div className="cv-identity">
           <h1>{document.basics.name}</h1>

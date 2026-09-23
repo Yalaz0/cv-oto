@@ -8,11 +8,16 @@ export function PaginatedCv({
   document,
   pageLimit = "auto",
   print = false,
+  zoom = "fit",
+  onLayoutChange,
 }: {
   document: CvTemplateDocument;
   pageLimit: "auto" | 1 | 2 | 3;
   print?: boolean;
+  zoom?: "fit" | 75 | 100 | 125;
+  onLayoutChange?: (layout: { pages: number; overflow: boolean }) => void;
 }) {
+  void pageLimit;
   const source = useRef<HTMLDivElement>(null),
     output = useRef<HTMLDivElement>(null),
     viewport = useRef<HTMLDivElement>(null);
@@ -23,11 +28,15 @@ export function PaginatedCv({
     const container = viewport.current;
     if (!container || print) return;
     const observer = new ResizeObserver((entries) =>
-      setScale(Math.min(1, entries[0].contentRect.width / 794)),
+      setScale(
+        zoom === "fit"
+          ? Math.min(1, entries[0].contentRect.width / 794)
+          : zoom / 100,
+      ),
     );
     observer.observe(container);
     return () => observer.disconnect();
-  }, [print]);
+  }, [print, zoom]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Re-paginate the rendered source whenever the CV document changes.
   useEffect(() => {
     let disposed = false;
@@ -101,6 +110,7 @@ export function PaginatedCv({
       }
       setCount(pages.length);
       setOverflow(oversized);
+      onLayoutChange?.({ pages: pages.length, overflow: oversized });
       target.dataset.paginationReady = "true";
       target.dataset.overflow = String(oversized);
       target.dataset.pageCount = String(pages.length);
@@ -108,7 +118,7 @@ export function PaginatedCv({
     return () => {
       disposed = true;
     };
-  }, [document]);
+  }, [document, onLayoutChange]);
   return (
     <div ref={viewport} className={print ? "cv-print-view" : "cv-preview-view"}>
       {!print && (
@@ -116,7 +126,7 @@ export function PaginatedCv({
           {count} A4 sayfa
           {overflow
             ? " · Bir kayıt sayfaya sığmıyor; metni bölün veya kısaltın."
-            : pageLimit !== "auto" && count > pageLimit
+            : count > 2
               ? " · Sayfa sınırı aşıldı; PDF indirilemez."
               : ""}
         </p>

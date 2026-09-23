@@ -33,6 +33,7 @@ export const jsonResumeSchema = z.object({
       phone: z.string().trim().max(50).default(""),
       url: z.union([z.literal(""), z.url()]).default(""),
       image: z.string().max(2_000).default(""),
+      photoAssetId: z.string().max(300).default(""),
       summary: z.string().max(4_000).default(""),
       location: z
         .object({
@@ -58,6 +59,7 @@ export const jsonResumeSchema = z.object({
       phone: "",
       url: "",
       image: "",
+      photoAssetId: "",
       summary: "",
       location: {
         address: "",

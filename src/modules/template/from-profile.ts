@@ -28,6 +28,7 @@ export function fromProfile(
       phone: basics?.phone,
       location: basics?.location.city,
       url: basics?.url,
+      image: basics?.image || undefined,
     },
     summary: claims
       .filter((claim) => claim.section === "summary")

@@ -30,8 +30,13 @@
   border-radius: 50%;
   object-fit: cover;
 }
-.cv-header:not(:has(.cv-photo)) {
-  grid-template-columns: minmax(0, 1fr) 52mm;
+.cv-photo-fallback {
+  display: grid;
+  place-items: center;
+  background: #e8edf3;
+  color: #00366d;
+  font-size: 10pt;
+  font-weight: 700;
 }
 .cv-measure {
   position: fixed;
