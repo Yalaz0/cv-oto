@@ -29,6 +29,12 @@ export function fromProfile(
       location: basics?.location.city,
       url: basics?.url,
       image: basics?.image || undefined,
+      github: profile.resume.basics.profiles.find(
+        (item) => String(item.network).toLowerCase() === "github",
+      )?.url as string | undefined,
+      linkedin: profile.resume.basics.profiles.find(
+        (item) => String(item.network).toLowerCase() === "linkedin",
+      )?.url as string | undefined,
     },
     summary: claims
       .filter((claim) => claim.section === "summary")
@@ -44,6 +50,8 @@ export function fromProfile(
     languages: claims
       .filter((claim) => claim.section === "languages")
       .map((claim) => claim.text),
+    display: profile.resume.meta
+      ?.cvDisplaySettings as CvTemplateDocument["display"],
   };
 }
 
@@ -86,6 +94,12 @@ export function fromMasterProfile(
       location: resume.basics.location.city || undefined,
       url: resume.basics.url || undefined,
       image: resume.basics.image || undefined,
+      github: resume.basics.profiles.find(
+        (item) => String(item.network).toLowerCase() === "github",
+      )?.url as string | undefined,
+      linkedin: resume.basics.profiles.find(
+        (item) => String(item.network).toLowerCase() === "linkedin",
+      )?.url as string | undefined,
     },
     summary: resume.basics.summary || undefined,
     work: entries(resume.work),
@@ -98,5 +112,6 @@ export function fromMasterProfile(
     languages: resume.languages
       .map((item) => [item.language, item.fluency].filter(Boolean).join(" · "))
       .filter(Boolean),
+    display: resume.meta?.cvDisplaySettings as CvTemplateDocument["display"],
   };
 }

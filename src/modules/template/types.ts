@@ -15,6 +15,8 @@ export type CvTemplateDocument = {
     phone?: string;
     location?: string;
     url?: string;
+    github?: string;
+    linkedin?: string;
     image?: string;
   };
   summary?: string;
@@ -24,4 +26,12 @@ export type CvTemplateDocument = {
   languages: string[];
   projects: CvEntry[];
   references: CvEntry[];
+  display?: {
+    showLocation?: boolean;
+    locationLabel?: "Şehir" | "Ülke" | "City" | "Country";
+    locationValue?: string;
+    showGithub?: boolean;
+    showLinkedin?: boolean;
+    showReferences?: boolean;
+  };
 };

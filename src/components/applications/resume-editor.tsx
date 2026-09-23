@@ -49,6 +49,7 @@ export function ResumeEditor({
   const [zoom, setZoom] = useState<"fit" | 75 | 100 | 125>("fit");
   const [layout, setLayout] = useState({ pages: 0, overflow: false });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [reviewedPayload, setReviewedPayload] = useState("");
   const [pdfError, setPdfError] = useState("");
@@ -150,6 +151,24 @@ export function ResumeEditor({
     } finally {
       setExporting(false);
     }
+  };
+  const switchVersion = async (targetRevision: number) => {
+    if (!resumeId || switching) return;
+    setSwitching(true);
+    if (dirty) await save();
+    const result = await restoreTailoredRevision({
+      id: resumeId,
+      revision: targetRevision,
+    });
+    if (result.error || !result.document)
+      setError(result.error ?? "Sürüm değiştirilemedi.");
+    else {
+      setDocument(result.document as ManualDocument);
+      setRevision(result.revision ?? revision);
+      setSaved(JSON.stringify(result.document));
+      setReviewedPayload("");
+    }
+    setSwitching(false);
   };
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -344,22 +363,10 @@ export function ResumeEditor({
                   </Button>
                   <Button
                     size="sm"
-                    onClick={async () => {
-                      if (!resumeId) return;
-                      const result = await restoreTailoredRevision({
-                        id: resumeId,
-                        revision: item.revision,
-                      });
-                      if (result.error || !result.document)
-                        return setError(
-                          result.error ?? "Sürüm geri yüklenemedi.",
-                        );
-                      setDocument(result.document as ManualDocument);
-                      setRevision(result.revision ?? revision);
-                      setSaved(JSON.stringify(result.document));
-                    }}
+                    disabled={switching}
+                    onClick={() => void switchVersion(item.revision)}
                   >
-                    Geri yükle
+                    {switching ? "Geçiliyor…" : "Bu sürüme geç"}
                   </Button>
                 </div>
               </div>
@@ -388,6 +395,62 @@ export function ResumeEditor({
           <details className="rounded-xl border p-4">
             <summary>İlan metni</summary>
             <p className="mt-3 whitespace-pre-wrap text-sm">{jobDescription}</p>
+          </details>
+          <details className="rounded-xl border p-4">
+            <summary>CV görüntü ayarları</summary>
+            <p className="my-3 text-xs text-muted-foreground">
+              Yalnızca isteğe bağlı satırları gösterir veya gizler; Mehmet Yalaz
+              şablonunun ölçüleri ve bölüm sırası değişmez.
+            </p>
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              {(
+                [
+                  ["showLocation", "Konumu göster"],
+                  ["showLinkedin", "LinkedIn’i göster"],
+                  ["showGithub", "GitHub’ı göster"],
+                  ["showReferences", "Referansları göster"],
+                ] as const
+              ).map(([key, label]) => (
+                <label className="flex items-center gap-2" key={key}>
+                  <input
+                    checked={document.display[key] !== false}
+                    type="checkbox"
+                    onChange={(event) =>
+                      change({
+                        ...document,
+                        display: {
+                          ...document.display,
+                          [key]: event.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+              <label>
+                Konum etiketi{" "}
+                <select
+                  className="ml-2 rounded border p-1"
+                  value={document.display.locationLabel}
+                  onChange={(event) =>
+                    change({
+                      ...document,
+                      display: {
+                        ...document.display,
+                        locationLabel: event.target
+                          .value as typeof document.display.locationLabel,
+                      },
+                    })
+                  }
+                >
+                  <option>Şehir</option>
+                  <option>Ülke</option>
+                  <option>City</option>
+                  <option>Country</option>
+                </select>
+              </label>
+            </div>
           </details>
           <details className="rounded-xl border p-4">
             <summary>
@@ -650,7 +713,7 @@ export function ResumeEditor({
           </div>
           <div id="cv-preview" className="max-h-[80vh] overflow-auto">
             <PaginatedCv
-              document={document.cv}
+              document={{ ...document.cv, display: document.display }}
               pageLimit={document.pageLimit}
               zoom={zoom}
               onLayoutChange={setLayout}

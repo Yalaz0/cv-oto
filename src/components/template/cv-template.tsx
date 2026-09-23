@@ -62,6 +62,18 @@ function Section({
 
 export function CvTemplate({ document }: { document: CvTemplateDocument }) {
   const copy = labels[document.locale];
+  const display = document.display ?? {};
+  const location = display.locationValue ?? document.basics.location;
+  const contactRows = [
+    document.basics.email,
+    document.basics.phone,
+    display.showLocation === false
+      ? undefined
+      : location && `${display.locationLabel ?? "Şehir"}: ${location}`,
+    display.showLinkedin === false ? undefined : document.basics.linkedin,
+    display.showGithub === false ? undefined : document.basics.github,
+    document.basics.url,
+  ];
   return (
     <article className="cv-document" data-template="mehmet-yalaz-v1">
       <header className="cv-header">
@@ -83,16 +95,9 @@ export function CvTemplate({ document }: { document: CvTemplateDocument }) {
           <p>{document.basics.title}</p>
         </div>
         <address className="cv-contact">
-          {[
-            document.basics.email,
-            document.basics.phone,
-            document.basics.location,
-            document.basics.url,
-          ]
-            .filter(Boolean)
-            .map((item) => (
-              <span key={item}>{item}</span>
-            ))}
+          {contactRows.filter(Boolean).map((item) => (
+            <span key={item}>{item}</span>
+          ))}
         </address>
       </header>
       <main className="cv-content">
@@ -143,13 +148,14 @@ export function CvTemplate({ document }: { document: CvTemplateDocument }) {
               </ul>
             </Section>
           )}
-          {document.references.length > 0 && (
-            <Section title={copy.references}>
-              {document.references.map((entry) => (
-                <Entry entry={entry} key={entry.title} />
-              ))}
-            </Section>
-          )}
+          {display.showReferences !== false &&
+            document.references.length > 0 && (
+              <Section title={copy.references}>
+                {document.references.map((entry) => (
+                  <Entry entry={entry} key={entry.title} />
+                ))}
+              </Section>
+            )}
         </aside>
       </main>
     </article>

@@ -107,6 +107,8 @@ export function ProfileEditor({
   const payload = JSON.stringify(document);
   const dirty = payload !== savedPayload;
   const preview = useMemo(() => fromMasterProfile(document), [document]);
+  const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(620);
   const verified = useMemo(
     () =>
       Object.values(document.registry).filter(
@@ -130,6 +132,33 @@ export function ProfileEditor({
       resume: {
         ...current.resume,
         basics: { ...current.resume.basics, [key]: value },
+      },
+    }));
+  const displaySettings =
+    (document.resume.meta?.cvDisplaySettings as
+      | {
+          showLocation?: boolean;
+          locationLabel?: "Şehir" | "Ülke" | "City" | "Country";
+          locationValue?: string;
+          showGithub?: boolean;
+          showLinkedin?: boolean;
+          showReferences?: boolean;
+        }
+      | undefined) ?? {};
+  const updateDisplaySetting = (key: string, value: string | boolean) =>
+    setDocument((current) => ({
+      ...current,
+      resume: {
+        ...current.resume,
+        meta: {
+          ...current.resume.meta,
+          cvDisplaySettings: {
+            ...(current.resume.meta?.cvDisplaySettings as
+              | Record<string, unknown>
+              | undefined),
+            [key]: value,
+          },
+        },
       },
     }));
   const _updateSection = (
@@ -355,7 +384,14 @@ export function ProfileEditor({
           Önizle
         </Button>
       </div>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,42fr)_minmax(0,58fr)]">
+      <div
+        className="grid items-start gap-6"
+        style={{
+          gridTemplateColumns: previewCollapsed
+            ? "minmax(0, 1fr)"
+            : `minmax(0, 1fr) minmax(420px, ${previewWidth}px)`,
+        }}
+      >
         <div
           className={`${tab === "edit" ? "block" : "hidden"} space-y-6 lg:block`}
         >
@@ -495,6 +531,85 @@ export function ProfileEditor({
               />
             </div>
           </section>
+          <details className="rounded-xl border bg-card p-5">
+            <summary className="cursor-pointer font-semibold">
+              CV görüntü ayarları
+            </summary>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Bu seçenekler yalnızca isteğe bağlı satırların görünürlüğünü ve
+              metnini değiştirir; şablon ölçüleri sabittir.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={displaySettings.showLocation !== false}
+                  onChange={(event) =>
+                    updateDisplaySetting("showLocation", event.target.checked)
+                  }
+                />{" "}
+                Konumu göster
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={displaySettings.showLinkedin !== false}
+                  onChange={(event) =>
+                    updateDisplaySetting("showLinkedin", event.target.checked)
+                  }
+                />{" "}
+                LinkedIn’i göster
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={displaySettings.showGithub !== false}
+                  onChange={(event) =>
+                    updateDisplaySetting("showGithub", event.target.checked)
+                  }
+                />{" "}
+                GitHub’ı göster
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={displaySettings.showReferences !== false}
+                  onChange={(event) =>
+                    updateDisplaySetting("showReferences", event.target.checked)
+                  }
+                />{" "}
+                Referansları göster
+              </label>
+              <label className="text-sm">
+                Konum etiketi
+                <select
+                  className="ml-2 rounded border p-2"
+                  value={displaySettings.locationLabel ?? "Şehir"}
+                  onChange={(event) =>
+                    updateDisplaySetting("locationLabel", event.target.value)
+                  }
+                >
+                  <option>Şehir</option>
+                  <option>Ülke</option>
+                  <option>City</option>
+                  <option>Country</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                Gösterilecek konum
+                <input
+                  className="ml-2 rounded border p-2"
+                  value={
+                    displaySettings.locationValue ??
+                    document.resume.basics.location.city
+                  }
+                  onChange={(event) =>
+                    updateDisplaySetting("locationValue", event.target.value)
+                  }
+                />
+              </label>
+            </div>
+          </details>
           <section className="grid gap-5 md:grid-cols-2">
             {sections.map(([key, label]) => (
               <StructuredSection
@@ -583,14 +698,31 @@ export function ProfileEditor({
             </section>
           )}
         </div>
-        <ProfilePreview
-          document={preview}
-          zoom={zoom}
-          onZoom={setZoom}
-          layout={layout}
-          onLayoutChange={setLayout}
-          visible={tab === "preview"}
-        />
+        {!previewCollapsed && (
+          <ProfilePreview
+            document={preview}
+            zoom={zoom}
+            onZoom={setZoom}
+            layout={layout}
+            onLayoutChange={setLayout}
+            visible={tab === "preview"}
+            onCollapse={() => setPreviewCollapsed(true)}
+            onResize={(delta) =>
+              setPreviewWidth((width) =>
+                Math.max(420, Math.min(900, width + delta)),
+              )
+            }
+          />
+        )}
+        {previewCollapsed && (
+          <Button
+            className="hidden lg:inline-flex"
+            variant="outline"
+            onClick={() => setPreviewCollapsed(false)}
+          >
+            Önizlemeyi aç
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -603,6 +735,8 @@ function ProfilePreview({
   layout,
   onLayoutChange,
   visible,
+  onCollapse,
+  onResize,
 }: {
   document: ReturnType<typeof fromMasterProfile>;
   zoom: "fit" | 75 | 100 | 125;
@@ -610,10 +744,12 @@ function ProfilePreview({
   layout: { pages: number; overflow: boolean };
   onLayoutChange: (value: { pages: number; overflow: boolean }) => void;
   visible: boolean;
+  onCollapse: () => void;
+  onResize: (delta: number) => void;
 }) {
   return (
     <aside
-      className={`${visible ? "block" : "hidden"} min-w-0 rounded-xl border bg-muted/40 lg:sticky lg:top-4 lg:block`}
+      className={`${visible ? "block" : "hidden"} relative min-w-0 rounded-xl border bg-muted/40 lg:sticky lg:top-4 lg:block`}
     >
       <div className="border-b bg-card p-4">
         <h2 className="font-semibold">Canlı Master CV önizlemesi</h2>
@@ -644,6 +780,14 @@ function ProfilePreview({
           >
             Önizlemeyi büyüt
           </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={onCollapse}
+          >
+            Daralt
+          </Button>
         </div>
       </div>
       {(layout.overflow || layout.pages > 2) && (
@@ -663,6 +807,18 @@ function ProfilePreview({
           onLayoutChange={onLayoutChange}
         />
       </div>
+      <button
+        aria-label="Önizleme genişliğini sürükleyin"
+        className="absolute -left-2 top-1/2 hidden h-16 w-3 cursor-col-resize rounded bg-border lg:block"
+        onPointerDown={(event) =>
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            onResize(-event.movementX);
+        }}
+        type="button"
+      />
     </aside>
   );
 }

@@ -26,6 +26,7 @@ import {
 const navigation = [
   { title: "Genel bakış", href: "/dashboard", icon: LayoutDashboard },
   { title: "Ana profil", href: "/profile", icon: UserRound },
+  { title: "İçerik arşivi", href: "/archive", icon: FileText },
   { title: "Başvurular", href: "/applications", icon: FolderOpen },
   { title: "AI ayarları", href: "/settings/ai", icon: Settings2 },
 ];

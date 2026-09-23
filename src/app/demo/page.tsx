@@ -30,6 +30,13 @@ export default function DemoPage() {
           origin: "user",
           selectedClaimIds,
           pageLimit: 2,
+          display: {
+            showLocation: true,
+            locationLabel: "Şehir",
+            showGithub: true,
+            showLinkedin: true,
+            showReferences: true,
+          },
           cv: fromProfile(profile, selectedClaimIds),
         }}
       />

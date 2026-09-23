@@ -19,6 +19,24 @@ export const manualDocumentSchema = z.object({
     z.literal(2),
     z.literal(3),
   ]),
+  display: z
+    .object({
+      showLocation: z.boolean().default(true),
+      locationLabel: z
+        .enum(["Şehir", "Ülke", "City", "Country"])
+        .default("Şehir"),
+      locationValue: text.optional(),
+      showGithub: z.boolean().default(true),
+      showLinkedin: z.boolean().default(true),
+      showReferences: z.boolean().default(true),
+    })
+    .default({
+      showLocation: true,
+      locationLabel: "Şehir",
+      showGithub: true,
+      showLinkedin: true,
+      showReferences: true,
+    }),
   cv: z.object({
     locale: z.enum(["tr-TR", "en-US"]),
     basics: z.object({
