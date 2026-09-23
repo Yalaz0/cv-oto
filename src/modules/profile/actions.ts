@@ -56,6 +56,23 @@ export async function saveProfile(input: unknown): Promise<ProfileActionState> {
   return { id: saved.id, version: saved.version };
 }
 
+export async function renameMasterResume(input: { id: string; name: string }) {
+  await requireSameOrigin();
+  const parsed = z
+    .object({ id: z.string().uuid(), name: z.string().trim().min(1).max(150) })
+    .safeParse(input);
+  if (!parsed.success)
+    return { error: "CV adı 1 ile 150 karakter arasında olmalıdır." };
+  const client = await createClient();
+  const { error } = await client.rpc("rename_master_resume", {
+    p_id: parsed.data.id,
+    p_name: parsed.data.name,
+  });
+  if (error) return { error: "CV adı kaydedilemedi." };
+  revalidatePath("/profile");
+  return {};
+}
+
 export async function restoreProfileVersion(input: {
   id: string;
   expectedVersion: number;

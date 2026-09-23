@@ -1,6 +1,9 @@
 import { expect, it } from "vitest";
 import { demoResume } from "@/modules/demo/fixtures";
-import { fromProfile } from "@/modules/template/from-profile";
+import {
+  fromMasterProfile,
+  fromProfile,
+} from "@/modules/template/from-profile";
 import { createMasterDocument, reconcileMasterDocument } from "./json-resume";
 
 it("keeps source IDs but requires re-review of edited facts", () => {
@@ -35,4 +38,12 @@ it("carries a persisted profile photo into the CV document", () => {
   profile.resume.basics.photoAssetId = "user-id/profile.jpg";
   const result = fromProfile(profile, Object.keys(profile.registry));
   expect(result.basics.image).toBe("/api/profile/photo");
+});
+
+it("renders the editable master profile before claims are verified", () => {
+  const profile = createMasterDocument(demoResume, "tr-TR", "needs_review");
+  const preview = fromMasterProfile(profile);
+  expect(preview.basics.name).toBe("Deniz Örnek");
+  expect(preview.work.length).toBeGreaterThan(0);
+  expect(preview.skills).toContain("Veri analizi");
 });

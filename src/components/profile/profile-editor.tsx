@@ -13,14 +13,17 @@ import {
 import Image from "next/image";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { PaginatedCv } from "@/components/template/paginated-cv";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import "@/components/template/cv-template.css";
 import { demoResume } from "@/modules/demo/fixtures";
 import {
   getJsonResumeExport,
   importJsonResume,
   importPdfResume,
+  renameMasterResume,
   restoreProfileVersion,
   saveProfile,
   uploadProfilePhoto,
@@ -30,11 +33,13 @@ import {
   reconcileMasterDocument,
 } from "@/modules/profile/json-resume";
 import type { MasterResumeDocument } from "@/modules/profile/schema";
+import { fromMasterProfile } from "@/modules/template/from-profile";
 
 type Props = {
   initialDocument: MasterResumeDocument | null;
   initialId: string | null;
   initialVersion: number;
+  initialName: string;
   history: {
     id: string;
     version: number;
@@ -43,10 +48,10 @@ type Props = {
   }[];
 };
 const sections = [
-  ["work", "Deneyim"],
   ["education", "Eğitim"],
-  ["projects", "Projeler"],
+  ["work", "Deneyim"],
   ["skills", "Beceriler"],
+  ["projects", "Projeler"],
   ["languages", "Diller"],
   ["references", "Referanslar"],
 ] as const;
@@ -72,6 +77,7 @@ export function ProfileEditor({
   initialDocument,
   initialId,
   initialVersion,
+  initialName,
   history,
 }: Props) {
   const [document, setRawDocument] = useState(initialDocument ?? starter);
@@ -86,11 +92,21 @@ export function ProfileEditor({
     });
   const [id, setId] = useState(initialId ?? crypto.randomUUID());
   const [version, setVersion] = useState(initialVersion);
+  const [name, setName] = useState(initialName);
+  const [savedPayload, setSavedPayload] = useState(() =>
+    JSON.stringify(initialDocument ?? starter()),
+  );
+  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [zoom, setZoom] = useState<"fit" | 75 | 100 | 125>("fit");
+  const [layout, setLayout] = useState({ pages: 0, overflow: false });
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [extractedText, setExtractedText] = useState("");
   const [importStage, setImportStage] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const payload = JSON.stringify(document);
+  const dirty = payload !== savedPayload;
+  const preview = useMemo(() => fromMasterProfile(document), [document]);
   const verified = useMemo(
     () =>
       Object.values(document.registry).filter(
@@ -181,6 +197,7 @@ export function ProfileEditor({
       if (result.error) return toast.error(result.error);
       setVersion(result.version ?? version);
       setId(result.id ?? id);
+      setSavedPayload(JSON.stringify(document));
       toast.success("Profil sürümü kaydedildi.");
     } catch {
       toast.error("Bağlantı kurulamadı. Değişiklikleriniz korunuyor.");
@@ -254,20 +271,36 @@ export function ProfileEditor({
     toast.success("Sürüm geri yüklendi. Sayfa güncelleniyor.");
     window.location.reload();
   };
+  const rename = async () => {
+    if (!id || !name.trim() || version === 0) return;
+    const result = await renameMasterResume({ id, name });
+    if (result.error) return toast.error(result.error);
+    toast.success("CV adı kaydedildi.");
+  };
   return (
-    <div className="mx-auto max-w-5xl space-y-8 pb-16">
+    <div className="mx-auto max-w-[1600px] space-y-6 pb-16">
       <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold tracking-[0.18em] text-primary">
             KAYNAK PROFİL
           </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Ana profiliniz
-          </h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{name}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Yalnızca kaydedip doğruladığınız bilgiler CV üretiminde
             kullanılabilir.
           </p>
+          <label className="mt-3 block max-w-md text-sm">
+            CV adı
+            <input
+              className="mt-1 block w-full rounded border bg-background p-2"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={() => void rename()}
+            />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Ana etiket budur; sürüm numarası yalnızca ikincil bilgidir.
+            </span>
+          </label>
         </div>
         <div className="flex flex-wrap gap-2">
           {version === 0 && !document.resume.basics.name && (
@@ -292,7 +325,12 @@ export function ProfileEditor({
             <Download /> Dışa aktar
           </Button>
           <Button onClick={save} disabled={saving}>
-            <Save /> {saving ? "Kaydediliyor" : "Sürümü kaydet"}
+            <Save />{" "}
+            {saving
+              ? "Kaydediliyor"
+              : dirty
+                ? "Değişiklikleri kaydet"
+                : "Kaydedildi"}
           </Button>
           <input
             ref={fileRef}
@@ -303,218 +341,329 @@ export function ProfileEditor({
           />
         </div>
       </header>
-      {importStage && (
-        <output className="rounded border p-3 text-sm">
-          {importStage}
-          {importStage === "Çıkarılan veriler inceleniyor"
-            ? " · Alanları düzenleyin, ardından doğrulayıp profil sürümünü kaydedin."
-            : "…"}
-        </output>
-      )}
-      {extractedText && (
-        <details className="rounded border p-4" open>
-          <summary>
-            PDF kaynak metni · alanları bu metinle karşılaştırın
-          </summary>
-          <p className="my-2 text-sm">
-            Bölümler yaklaşık çıkarıldı. Birden fazla kayıt tek alanda olabilir;
-            gerekli kayıtları ayırıp doğrulayın.
-          </p>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-sm">
-            {extractedText}
-          </pre>
-        </details>
-      )}
-      <section className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-3">
-        <div className="flex items-center gap-3">
-          <ShieldCheck className="size-5 text-primary" />
-          <div>
-            <p className="font-medium">{verified} doğrulanmış ifade</p>
-            <p className="text-xs text-muted-foreground">
-              AI için kullanılabilir
-            </p>
-          </div>
-        </div>
-        <div>
-          <p className="font-medium">Sürüm {version || "taslak"}</p>
-          <p className="text-xs text-muted-foreground">
-            Kayıtlar değişmez geçmişe eklenir
-          </p>
-        </div>
-        <div>
-          <p className="font-medium">
-            {Object.keys(document.registry).length - verified} inceleme bekliyor
-          </p>
-          <p className="text-xs text-muted-foreground">
-            İçe aktarılan bilgi önce onay ister
-          </p>
-        </div>
-      </section>
-      <section className="grid gap-5 rounded-xl border bg-card p-5 md:grid-cols-2">
-        <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-lg bg-muted/40 p-4">
-          {document.resume.basics.image ? (
-            <Image
-              alt="Profil önizlemesi"
-              className="size-16 rounded-full object-cover"
-              height={64}
-              src={document.resume.basics.image}
-              width={64}
-            />
-          ) : (
-            <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">
-              Fotoğraf
-            </div>
-          )}
-          <div>
-            <Label htmlFor="profile-photo">Profil fotoğrafı</Label>
-            <p className="mt-1 text-xs text-muted-foreground">
-              JPEG, PNG veya WebP; en fazla 5 MB. Sunucuda güvenle yeniden
-              işlenir.
-            </p>
-            <Input
-              className="mt-2 max-w-xs"
-              disabled={uploadingPhoto}
-              id="profile-photo"
-              accept="image/jpeg,image/png,image/webp"
-              type="file"
-              onChange={(event) => onPhoto(event.target.files?.[0])}
-            />
-          </div>
-        </div>
-        <Field
-          label="Ad soyad"
-          value={document.resume.basics.name}
-          onChange={(value) => updateBasics("name", value)}
-        />
-        <Field
-          label="Unvan"
-          value={document.resume.basics.label}
-          onChange={(value) => updateBasics("label", value)}
-        />
-        <Field
-          label="E-posta"
-          type="email"
-          value={document.resume.basics.email}
-          onChange={(value) => updateBasics("email", value)}
-        />
-        <Field
-          label="Telefon"
-          value={document.resume.basics.phone}
-          onChange={(value) => updateBasics("phone", value)}
-        />
-        <Field
-          label="Web sitesi / LinkedIn"
-          value={document.resume.basics.url}
-          onChange={(value) => updateBasics("url", value)}
-        />
-        <Field
-          label="Şehir"
-          value={document.resume.basics.location.city}
-          onChange={(value) =>
-            setDocument((current) => ({
-              ...current,
-              resume: {
-                ...current.resume,
-                basics: {
-                  ...current.resume.basics,
-                  location: { ...current.resume.basics.location, city: value },
-                },
-              },
-            }))
-          }
-        />
-        <div className="md:col-span-2">
-          <Label htmlFor="summary">Profesyonel özet</Label>
-          <textarea
-            id="summary"
-            className="mt-2 min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
-            value={document.resume.basics.summary}
-            onChange={(event) => updateBasics("summary", event.target.value)}
-          />
-        </div>
-      </section>
-      <section className="grid gap-5 md:grid-cols-2">
-        {sections.map(([key, label]) => (
-          <StructuredSection
-            section={key}
-            items={document.resume[key]}
-            key={key}
-            label={label}
-            onChange={(items) => setStructuredSection(key, items)}
-          />
-        ))}
-      </section>
-      <section className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-        <p className="font-medium">İçe aktarılan kayıtları doğrula</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          İçe aktarılan ifadeleri kaynakla karşılaştırdıktan sonra doğrulayın.
-        </p>
-        {unreviewedSections.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {unreviewedSections.map((section) => (
-              <Button
-                key={section}
-                onClick={() => verifySection(section)}
-                type="button"
-                variant="outline"
-              >
-                {section} bölümünü doğrula
-              </Button>
-            ))}
-          </div>
-        )}
+      <div className="flex gap-2 lg:hidden">
         <Button
-          className="mt-4"
-          variant="outline"
-          onClick={() =>
-            setRawDocument((current) => ({
-              ...current,
-              registry: Object.fromEntries(
-                Object.entries(current.registry).map(([key, claim]) => [
-                  key,
-                  { ...claim, status: "verified" as const },
-                ]),
-              ),
-              itemMetadata: Object.fromEntries(
-                Object.entries(current.itemMetadata).map(([key, metadata]) => [
-                  key,
-                  { ...metadata, status: "verified" as const },
-                ]),
-              ),
-            }))
-          }
+          variant={tab === "edit" ? "default" : "outline"}
+          onClick={() => setTab("edit")}
         >
-          Tüm ifadeleri doğrula
+          Düzenle
         </Button>
-      </section>
-      {history.length > 0 && (
-        <section className="rounded-xl border bg-card p-5">
-          <h2 className="font-semibold">Sürüm geçmişi</h2>
-          <ol className="mt-3 space-y-2 text-sm">
-            {history.map((entry) => (
-              <li className="flex items-center justify-between" key={entry.id}>
-                <span>Sürüm {entry.version}</span>
-                <Button
-                  disabled={entry.version === version}
-                  onClick={() => restore(entry.id)}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  Geri yükle
-                </Button>
-                <span className="text-muted-foreground">
-                  {new Intl.DateTimeFormat("tr-TR", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }).format(new Date(entry.createdAt))}
-                </span>
-              </li>
+        <Button
+          variant={tab === "preview" ? "default" : "outline"}
+          onClick={() => setTab("preview")}
+        >
+          Önizle
+        </Button>
+      </div>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,42fr)_minmax(0,58fr)]">
+        <div
+          className={`${tab === "edit" ? "block" : "hidden"} space-y-6 lg:block`}
+        >
+          {importStage && (
+            <output className="rounded border p-3 text-sm">
+              {importStage}
+              {importStage === "Çıkarılan veriler inceleniyor"
+                ? " · Alanları düzenleyin, ardından doğrulayıp profil sürümünü kaydedin."
+                : "…"}
+            </output>
+          )}
+          {extractedText && (
+            <details className="rounded border p-4" open>
+              <summary>
+                PDF kaynak metni · alanları bu metinle karşılaştırın
+              </summary>
+              <p className="my-2 text-sm">
+                Bölümler yaklaşık çıkarıldı. Birden fazla kayıt tek alanda
+                olabilir; gerekli kayıtları ayırıp doğrulayın.
+              </p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-sm">
+                {extractedText}
+              </pre>
+            </details>
+          )}
+          <section className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-3">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="size-5 text-primary" />
+              <div>
+                <p className="font-medium">{verified} doğrulanmış ifade</p>
+                <p className="text-xs text-muted-foreground">
+                  AI için kullanılabilir
+                </p>
+              </div>
+            </div>
+            <div>
+              <p className="font-medium">Sürüm {version || "taslak"}</p>
+              <p className="text-xs text-muted-foreground">
+                Kayıtlar değişmez geçmişe eklenir
+              </p>
+            </div>
+            <div>
+              <p className="font-medium">
+                {Object.keys(document.registry).length - verified} inceleme
+                bekliyor
+              </p>
+              <p className="text-xs text-muted-foreground">
+                İçe aktarılan bilgi önce onay ister
+              </p>
+            </div>
+          </section>
+          <section className="grid gap-5 rounded-xl border bg-card p-5 md:grid-cols-2">
+            <div className="md:col-span-2 flex flex-wrap items-center gap-4 rounded-lg bg-muted/40 p-4">
+              {document.resume.basics.image ? (
+                <Image
+                  alt="Profil önizlemesi"
+                  className="size-16 rounded-full object-cover"
+                  height={64}
+                  src={document.resume.basics.image}
+                  width={64}
+                />
+              ) : (
+                <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">
+                  Fotoğraf
+                </div>
+              )}
+              <div>
+                <Label htmlFor="profile-photo">Profil fotoğrafı</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  JPEG, PNG veya WebP; en fazla 5 MB. Sunucuda güvenle yeniden
+                  işlenir.
+                </p>
+                <Input
+                  className="mt-2 max-w-xs"
+                  disabled={uploadingPhoto}
+                  id="profile-photo"
+                  accept="image/jpeg,image/png,image/webp"
+                  type="file"
+                  onChange={(event) => onPhoto(event.target.files?.[0])}
+                />
+              </div>
+            </div>
+            <Field
+              label="Ad soyad"
+              value={document.resume.basics.name}
+              onChange={(value) => updateBasics("name", value)}
+            />
+            <Field
+              label="Unvan"
+              value={document.resume.basics.label}
+              onChange={(value) => updateBasics("label", value)}
+            />
+            <Field
+              label="E-posta"
+              type="email"
+              value={document.resume.basics.email}
+              onChange={(value) => updateBasics("email", value)}
+            />
+            <Field
+              label="Telefon"
+              value={document.resume.basics.phone}
+              onChange={(value) => updateBasics("phone", value)}
+            />
+            <Field
+              label="Web sitesi / LinkedIn"
+              value={document.resume.basics.url}
+              onChange={(value) => updateBasics("url", value)}
+            />
+            <Field
+              label="Şehir"
+              value={document.resume.basics.location.city}
+              onChange={(value) =>
+                setDocument((current) => ({
+                  ...current,
+                  resume: {
+                    ...current.resume,
+                    basics: {
+                      ...current.resume.basics,
+                      location: {
+                        ...current.resume.basics.location,
+                        city: value,
+                      },
+                    },
+                  },
+                }))
+              }
+            />
+            <div className="md:col-span-2">
+              <Label htmlFor="summary">Profesyonel özet</Label>
+              <textarea
+                id="summary"
+                className="mt-2 min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={document.resume.basics.summary}
+                onChange={(event) =>
+                  updateBasics("summary", event.target.value)
+                }
+              />
+            </div>
+          </section>
+          <section className="grid gap-5 md:grid-cols-2">
+            {sections.map(([key, label]) => (
+              <StructuredSection
+                section={key}
+                items={document.resume[key]}
+                key={key}
+                label={label}
+                onChange={(items) => setStructuredSection(key, items)}
+              />
             ))}
-          </ol>
-        </section>
-      )}
+          </section>
+          <section className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+            <p className="font-medium">İçe aktarılan kayıtları doğrula</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              İçe aktarılan ifadeleri kaynakla karşılaştırdıktan sonra
+              doğrulayın.
+            </p>
+            {unreviewedSections.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {unreviewedSections.map((section) => (
+                  <Button
+                    key={section}
+                    onClick={() => verifySection(section)}
+                    type="button"
+                    variant="outline"
+                  >
+                    {section} bölümünü doğrula
+                  </Button>
+                ))}
+              </div>
+            )}
+            <Button
+              className="mt-4"
+              variant="outline"
+              onClick={() =>
+                setRawDocument((current) => ({
+                  ...current,
+                  registry: Object.fromEntries(
+                    Object.entries(current.registry).map(([key, claim]) => [
+                      key,
+                      { ...claim, status: "verified" as const },
+                    ]),
+                  ),
+                  itemMetadata: Object.fromEntries(
+                    Object.entries(current.itemMetadata).map(
+                      ([key, metadata]) => [
+                        key,
+                        { ...metadata, status: "verified" as const },
+                      ],
+                    ),
+                  ),
+                }))
+              }
+            >
+              Tüm ifadeleri doğrula
+            </Button>
+          </section>
+          {history.length > 0 && (
+            <section className="rounded-xl border bg-card p-5">
+              <h2 className="font-semibold">Sürüm geçmişi</h2>
+              <ol className="mt-3 space-y-2 text-sm">
+                {history.map((entry) => (
+                  <li
+                    className="flex items-center justify-between"
+                    key={entry.id}
+                  >
+                    <span>Sürüm {entry.version}</span>
+                    <Button
+                      disabled={entry.version === version}
+                      onClick={() => restore(entry.id)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Geri yükle
+                    </Button>
+                    <span className="text-muted-foreground">
+                      {new Intl.DateTimeFormat("tr-TR", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(entry.createdAt))}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+        </div>
+        <ProfilePreview
+          document={preview}
+          zoom={zoom}
+          onZoom={setZoom}
+          layout={layout}
+          onLayoutChange={setLayout}
+          visible={tab === "preview"}
+        />
+      </div>
     </div>
+  );
+}
+
+function ProfilePreview({
+  document,
+  zoom,
+  onZoom,
+  layout,
+  onLayoutChange,
+  visible,
+}: {
+  document: ReturnType<typeof fromMasterProfile>;
+  zoom: "fit" | 75 | 100 | 125;
+  onZoom: (value: "fit" | 75 | 100 | 125) => void;
+  layout: { pages: number; overflow: boolean };
+  onLayoutChange: (value: { pages: number; overflow: boolean }) => void;
+  visible: boolean;
+}) {
+  return (
+    <aside
+      className={`${visible ? "block" : "hidden"} min-w-0 rounded-xl border bg-muted/40 lg:sticky lg:top-4 lg:block`}
+    >
+      <div className="border-b bg-card p-4">
+        <h2 className="font-semibold">Canlı Master CV önizlemesi</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          İçerik değişiklikleri anında görünür. Şablon, sabit iki A4 sayfadır.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(["fit", 75, 100, 125] as const).map((value) => (
+            <Button
+              key={String(value)}
+              size="sm"
+              type="button"
+              variant={zoom === value ? "default" : "outline"}
+              onClick={() => onZoom(value)}
+            >
+              {value === "fit" ? "Sığdır" : `%${value}`}
+            </Button>
+          ))}
+          <Button
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() =>
+              globalThis.document
+                .getElementById("master-cv-preview")
+                ?.requestFullscreen?.()
+            }
+          >
+            Önizlemeyi büyüt
+          </Button>
+        </div>
+      </div>
+      {(layout.overflow || layout.pages > 2) && (
+        <p
+          role="alert"
+          className="m-3 rounded border border-destructive p-3 text-sm text-destructive"
+        >
+          İçerik sabit iki sayfaya sığmıyor. Yazı boyutu veya şablon değişmez;
+          metni ya da kayıtları azaltın.
+        </p>
+      )}
+      <div id="master-cv-preview" className="max-h-[80vh] overflow-auto">
+        <PaginatedCv
+          document={document}
+          pageLimit={2}
+          zoom={zoom}
+          onLayoutChange={onLayoutChange}
+        />
+      </div>
+    </aside>
   );
 }
 

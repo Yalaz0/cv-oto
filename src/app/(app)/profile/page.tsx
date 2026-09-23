@@ -7,7 +7,7 @@ export default async function ProfilePage() {
   const client = await createClient();
   const { data } = await client
     .from("master_resumes")
-    .select("id,current_version,document")
+    .select("id,name,current_version,document")
     .eq("is_active", true)
     .maybeSingle();
   const document = data?.document
@@ -27,6 +27,7 @@ export default async function ProfilePage() {
         initialDocument={document?.success ? document.data : null}
         initialId={data?.id ?? null}
         initialVersion={data?.current_version ?? 0}
+        initialName={data?.name ?? "Master CV"}
         history={(history ?? []).map((entry) => ({
           id: entry.id,
           version: entry.version,

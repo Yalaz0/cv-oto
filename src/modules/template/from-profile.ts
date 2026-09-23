@@ -46,3 +46,57 @@ export function fromProfile(
       .map((claim) => claim.text),
   };
 }
+
+// The master-profile preview intentionally reads the edit buffer directly.
+// Application CV generation still uses fromProfile above and verified sources only.
+export function fromMasterProfile(
+  profile: MasterResumeDocument,
+): CvTemplateDocument {
+  const resume = profile.resume;
+  const details = (item: Record<string, unknown>) => {
+    if (Array.isArray(item.highlights))
+      return item.highlights.filter(
+        (value): value is string => typeof value === "string",
+      );
+    if (typeof item.details === "string")
+      return item.details.split("\n").filter(Boolean);
+    if (typeof item.summary === "string")
+      return item.summary.split("\n").filter(Boolean);
+    return [];
+  };
+  const entries = (items: Record<string, unknown>[]) =>
+    items.map((item) => ({
+      title: String(
+        item.company ?? item.institution ?? item.name ?? item.reference ?? "",
+      ),
+      subtitle:
+        String(item.position ?? item.area ?? item.studyType ?? "") || undefined,
+      date:
+        [item.startDate, item.endDate].filter(Boolean).join(" – ") || undefined,
+      location: typeof item.location === "string" ? item.location : undefined,
+      details: details(item),
+    }));
+  return {
+    locale: profile.locale,
+    basics: {
+      name: resume.basics.name,
+      title: resume.basics.label,
+      email: resume.basics.email || undefined,
+      phone: resume.basics.phone || undefined,
+      location: resume.basics.location.city || undefined,
+      url: resume.basics.url || undefined,
+      image: resume.basics.image || undefined,
+    },
+    summary: resume.basics.summary || undefined,
+    work: entries(resume.work),
+    education: entries(resume.education),
+    projects: entries(resume.projects),
+    references: entries(resume.references),
+    skills: resume.skills
+      .map((item) => String(item.name ?? ""))
+      .filter(Boolean),
+    languages: resume.languages
+      .map((item) => [item.language, item.fluency].filter(Boolean).join(" · "))
+      .filter(Boolean),
+  };
+}
